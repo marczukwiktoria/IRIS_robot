@@ -37,12 +37,13 @@
 #define C15 A5
 #define C16 A11
 #define THRESHOLD 400
- 
-int frontLineSensors[] = {C4, C5, C6, C7, C8};
-int backLineSensors[] = {C16, C15, C14, C13, C12};
-int leftLineSensors[] = {C3, C2, C1};
-int rightLineSensors[] = {C9, C10, C11};
-int *lineSensors[] = {frontLineSensors, backLineSensors};
+
+// Arrays storing pin numbers for line sensors
+int frontLineSensorPins[] = {C4, C5, C6, C7, C8};
+int backLineSensorPins[] = {C16, C15, C14, C13, C12};
+int leftLineSensorPins[] = {C3, C2, C1};
+int rightLineSensorPins[] = {C9, C10, C11};
+int *lineSensors[] = {frontLineSensorPins, backLineSensorPins};
 
 //Stepper motors
 #define R_STEP 51
@@ -52,42 +53,47 @@ int *lineSensors[] = {frontLineSensors, backLineSensors};
 #define MICROSTEP 16
 #define Td 180
 
+// Function to read sensor value and return a boolean state
 bool readSensor(int sensPin){
   return (analogRead(sensPin) > THRESHOLD);
 }
 
+// Stepper motor objects
 Stepper myStepperLeft = Stepper(200, L_STEP, L_DIR);
 Stepper myStepperRight = Stepper(200, R_STEP, R_DIR);
 
+// Function prototypes for FreeRTOS tasks
 void StepperRight( void *pvParameters );
 void StepperLeft( void *pvParameters );
 void FlagStep(void *pvParameters);
-bool flagRight = true;
-bool flagLeft = true;
-int crossingsStraight = 2;
+
+// Motor control flags
+bool enableRightMotor = true;
+bool enableLeftMotor = true;
+int remainingCrossings = 2;
 bool keepLineOn = false;
-bool stopAtCrossing = false;
+bool haltAtNextCrossing = false;
 
+// Motor step speed settings
 enum MotorStep {LowStep=190 ,MediumStep=200,MaxStep=210};
-
-MotorStep flagStepRight = MaxStep;
-MotorStep flagStepLeft = MaxStep;
+MotorStep rightMotorStepCount = MaxStep;
+MotorStep leftMotorStepCount = MaxStep;
 
 //Misc
 #define BUZZER 8
 
-//Location of our robot
+// Structure to store robot position and orientation
 struct coordinates {
   int posX;
   int posY;
   int rot;  // 0-forw, 1- right, 2-back, 3-left
 };
 
-coordinates loc;
+coordinates robotPosition;
 
-unsigned long timePassed;
+unsigned long elapsedTime;
 
-//Read distance sensors
+// Functions to read distance sensor values
 int readSharp1() {
   return digitalRead(SHARP_LEFT_MB) * 2 + digitalRead(SHARP_LEFT_LB) * 1;
 }
@@ -98,6 +104,7 @@ int readSharp3() {
   return digitalRead(SHARP_RIGHT_MB) * 2 + digitalRead(SHARP_RIGHT_LB) * 1;
 }
 
+// Ultrasonic sensor readings
 int ultra1, ultra2, ultra3 = 0;
 int readUltra1() {
   ultra1 = digitalRead(HCSR_LEFT_MB) * 2 + digitalRead(HCSR_LEFT_LB) * 1;
@@ -113,83 +120,75 @@ int readUltra3() {
 }
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(9600);
 
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB, on LEONARDO, MICRO, YUN, and other 32u4 based boards.
   }
-
-  xTaskCreate(
+  
+  xTaskCreate( // Function controlling left stepper motor
       StepperLeft
-      ,  "StepperLeft"   // A name just for humans
-      ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+      ,  "StepperLeft"
+      ,  128
       ,  NULL
-      ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+      ,  1
       ,  NULL );
 
-  xTaskCreate(
+
+  xTaskCreate( // Function controlling right stepper motor
     StepperRight
-    ,  "StepperRight"   // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  "StepperRight"
+    ,  128
     ,  NULL
     ,  1
     ,  NULL );
 
-  xTaskCreate(
+  xTaskCreate( // Function to adjust motor speed based on line tracking sensors
     FlagStep
-    ,  "FlagStep"   // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  "FlagStep"
+    ,  128
     ,  NULL
     ,  1
     ,  NULL );
-
 
 }
 
-
-
+// Function controlling right stepper motor
 void StepperRight( void *pvParameters ) {
   (void) pvParameters;
   for (;;)
   {
-    if (flagRight) {
-      //Serial.print(String(flagStepRight));
-      //Serial.print("R\n");
-
-
-      myStepperRight.step(flagStepRight);
+    if (enableRightMotor) {
+      myStepperRight.step(rightMotorStepCount);
       vTaskDelay(1);
     }
   }
 }
 
+// Function controlling left stepper motor
 void StepperLeft( void *pvParameters ) {
   (void) pvParameters;
   for (;;)
   {
-    if (flagLeft) {
-      
-      //Serial.print(String(flagStepLeft));
-      //Serial.print("L\n");
-      
-      myStepperLeft.step(flagStepLeft);
+    if (enableLeftMotor) {
+      myStepperLeft.step(leftMotorStepCount);
       vTaskDelay(1);
     }
   }
 
 }
 
+// Function to adjust motor speed based on line tracking sensors
 void FlagStep(void *pvParameters)
 {
 for (;;)
   {
-    if (stopAtCrossing==false) {
+    if (haltAtNextCrossing==false) {
       int sumFront = 0, sumBack = 0;
       for(int i=0; i<=4; i++)
       {
-        sumFront+=readSensor(frontLineSensors[i]);
-        sumBack+=readSensor(backLineSensors[i]);
+        sumFront+=readSensor(frontLineSensorPins[i]);
+        sumBack+=readSensor(backLineSensorPins[i]);
       }
       int priority;
       if (sumFront==0) {
@@ -206,49 +205,44 @@ for (;;)
       }
 
       if (readSensor(lineSensors[priority][0]) ) {
-        flagStepLeft = LowStep -10;
-        flagStepRight = MaxStep;
+        leftMotorStepCount = LowStep -10;
+        rightMotorStepCount = MaxStep;
         
       }
       else if (readSensor(lineSensors[priority][1])) {
-        flagStepLeft = MediumStep-10;
-        flagStepRight = MaxStep;
+        leftMotorStepCount = MediumStep-10;
+        rightMotorStepCount = MaxStep;
       }
       else  if (readSensor(lineSensors[priority][3])) {
-        flagStepLeft = MaxStep-10;
-        flagStepRight = MediumStep;
+        leftMotorStepCount = MaxStep-10;
+        rightMotorStepCount = MediumStep;
       }
       else if (readSensor(lineSensors[priority][4])){
-        flagStepLeft = MaxStep-10;
-        flagStepRight = LowStep;
+        leftMotorStepCount = MaxStep-10;
+        rightMotorStepCount = LowStep;
       } else if (readSensor(lineSensors[priority][2])){
-        flagStepLeft = MaxStep-10;
-        flagStepRight = MaxStep;
+        leftMotorStepCount = MaxStep-10;
+        rightMotorStepCount = MaxStep;
       }
     }
     //Below is intersection detection
-    Serial.print(crossingsStraight);
-    
-    
+    Serial.print(remainingCrossings);
     Serial.print("\n");
-    if ((readSensor(rightLineSensors[0]) || readSensor(leftLineSensors[0])) && keepLineOn == false) {
+
+    if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false) {
       keepLineOn = true;
-      crossingsStraight-=1;
-      if (crossingsStraight == 0) {
-        stopAtCrossing = true;
-        flagLeft = false;
-        flagRight = false;
+      remainingCrossings-=1;
+      if (remainingCrossings == 0) {
+        haltAtNextCrossing = true;
+        enableLeftMotor = false;
+        enableRightMotor = false;
       } 
-    } else if (!readSensor(rightLineSensors[0]) && !readSensor(leftLineSensors[0])) {
+    } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0])) {
       keepLineOn = false;
     }
 
-
-    
     vTaskDelay(10/portTICK_PERIOD_MS);
-
   }
- 
 }
 
 void stop() {
