@@ -39,7 +39,9 @@
 #define THRESHOLD 400
  
 int frontLineSensors[] = {C4, C5, C6, C7, C8};
-int backLineSensors[] = {C12, C13, C14, C15, C16};
+int backLineSensors[] = {C16, C15, C14, C13, C12};
+int leftLineSensors[] = {C3, C2, C1};
+int rightLineSensors[] = {C9, C10, C11};
 int *lineSensors[] = {frontLineSensors, backLineSensors};
 
 //Stepper motors
@@ -60,15 +62,16 @@ Stepper myStepperRight = Stepper(200, R_STEP, R_DIR);
 void StepperRight( void *pvParameters );
 void StepperLeft( void *pvParameters );
 void FlagStep(void *pvParameters);
-int flagRight = 1;
-int flagLeft = 1;
+bool flagRight = true;
+bool flagLeft = true;
+int crossingsStraight = 2;
+bool keepLineOn = false;
+bool stopAtCrossing = false;
 
-enum MotorStep {LowStep=0 ,MediumStep=50,MaxStep=100};
+enum MotorStep {LowStep=190 ,MediumStep=200,MaxStep=210};
 
 MotorStep flagStepRight = MaxStep;
 MotorStep flagStepLeft = MaxStep;
-
-
 
 //Misc
 #define BUZZER 8
@@ -122,7 +125,7 @@ void setup() {
       ,  "StepperLeft"   // A name just for humans
       ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
       ,  NULL
-      ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+      ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
       ,  NULL );
 
   xTaskCreate(
@@ -130,7 +133,7 @@ void setup() {
     ,  "StepperRight"   // A name just for humans
     ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  2
+    ,  1
     ,  NULL );
 
   xTaskCreate(
@@ -138,7 +141,7 @@ void setup() {
     ,  "FlagStep"   // A name just for humans
     ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  0
+    ,  1
     ,  NULL );
 
 
@@ -153,6 +156,7 @@ void StepperRight( void *pvParameters ) {
     if (flagRight) {
       //Serial.print(String(flagStepRight));
       //Serial.print("R\n");
+
 
       myStepperRight.step(flagStepRight);
       vTaskDelay(1);
@@ -180,50 +184,76 @@ void FlagStep(void *pvParameters)
 {
 for (;;)
   {
-    int sumFront = 0, sumBack = 0;
-    for(int i=0; i<=4; i++)
-    {
-      sumFront+=readSensor(frontLineSensors[i]);
-      sumBack+=readSensor(backLineSensors[i]);
-    }
-    int priority;
-    if (sumFront>sumBack+1) {
-      priority=1;
-    } else {
-      priority=0;
-    }
+    if (stopAtCrossing==false) {
+      int sumFront = 0, sumBack = 0;
+      for(int i=0; i<=4; i++)
+      {
+        sumFront+=readSensor(frontLineSensors[i]);
+        sumBack+=readSensor(backLineSensors[i]);
+      }
+      int priority;
+      if (sumFront==0) {
+        priority = 1;
+        
+      } else if (sumBack == 0){
+        priority=0;
+      } else {
+        if (sumFront>sumBack+1) {
+          priority=1;
+        } else {
+          priority=0;
+        }
+      }
 
-
-    if (readSensor(lineSensors[priority][0]) ) {
-      flagStepLeft = LowStep;
-      flagStepRight = MaxStep;
-      
+      if (readSensor(lineSensors[priority][0]) ) {
+        flagStepLeft = LowStep -10;
+        flagStepRight = MaxStep;
+        
+      }
+      else if (readSensor(lineSensors[priority][1])) {
+        flagStepLeft = MediumStep-10;
+        flagStepRight = MaxStep;
+      }
+      else  if (readSensor(lineSensors[priority][3])) {
+        flagStepLeft = MaxStep-10;
+        flagStepRight = MediumStep;
+      }
+      else if (readSensor(lineSensors[priority][4])){
+        flagStepLeft = MaxStep-10;
+        flagStepRight = LowStep;
+      } else if (readSensor(lineSensors[priority][2])){
+        flagStepLeft = MaxStep-10;
+        flagStepRight = MaxStep;
+      }
     }
-    else if (readSensor(lineSensors[priority][1])) {
-      flagStepLeft = MediumStep;
-      flagStepRight = MaxStep;
-    }
-    else if (readSensor(lineSensors[priority][2])){
-      flagStepLeft = MaxStep;
-      flagStepRight = MaxStep;
-    }
-    else  if (readSensor(lineSensors[priority][3])) {
-      flagStepLeft = MaxStep;
-      flagStepRight = MediumStep;
-    }
-    else if (readSensor(lineSensors[priority][4])){
-      flagStepLeft = MaxStep;
-      flagStepRight = LowStep;
+    //Below is intersection detection
+    Serial.print(crossingsStraight);
+    
+    
+    Serial.print("\n");
+    if ((readSensor(rightLineSensors[0]) || readSensor(leftLineSensors[0])) && keepLineOn == false) {
+      keepLineOn = true;
+      crossingsStraight-=1;
+      if (crossingsStraight == 0) {
+        stopAtCrossing = true;
+        flagLeft = false;
+        flagRight = false;
+      } 
+    } else if (!readSensor(rightLineSensors[0]) && !readSensor(leftLineSensors[0])) {
+      keepLineOn = false;
     }
 
 
     
-  vTaskDelay(100/portTICK_PERIOD_MS); 
+    vTaskDelay(10/portTICK_PERIOD_MS);
+
   }
  
 }
 
+void stop() {
 
+}
 
 // 3 in Ultra means there is something really close
 // 3 in Sharp means there is opponent close
