@@ -36,11 +36,14 @@
 #define C14 A9
 #define C15 A5
 #define C16 A11
-#define THRESHOLD 400
+#define THRESHOLD 400 //value of left back sensor is lowered artificially
+// #define THRESHOLD 600
 
 // Arrays storing pin numbers for line sensors
 int frontLineSensorPins[] = {C4, C5, C6, C7, C8};
-int backLineSensorPins[] = {C16, C15, C14, C13, C12};
+// int frontLineSensorPins[] = {C8, C7, C6, C5, C4};
+// int backLineSensorPins[] = {C16, C15, C14, C13, C12};
+int backLineSensorPins[] = {C12, C13, C14, C15, C16};
 int leftLineSensorPins[] = {C3, C2, C1};
 int rightLineSensorPins[] = {C9, C10, C11};
 int *lineSensors[] = {frontLineSensorPins, backLineSensorPins};
@@ -51,7 +54,7 @@ int *lineSensors[] = {frontLineSensorPins, backLineSensorPins};
 #define R_DIR 53
 #define L_DIR 52
 #define MICROSTEP 16
-#define Td 180
+#define Td 90
 
 // Function to read sensor value and return a boolean state
 bool readSensor(int sensPin){
@@ -59,8 +62,8 @@ bool readSensor(int sensPin){
 }
 
 // Stepper motor objects
-Stepper myStepperLeft = Stepper(200, L_STEP, L_DIR);
-Stepper myStepperRight = Stepper(200, R_STEP, R_DIR);
+// Stepper myStepperLeft = Stepper(200, L_STEP, L_DIR);
+// Stepper myStepperRight = Stepper(200, R_STEP, R_DIR);
 
 // Function prototypes for FreeRTOS tasks
 void StepperRight( void *pvParameters );
@@ -68,16 +71,21 @@ void StepperLeft( void *pvParameters );
 void FlagStep(void *pvParameters);
 
 // Motor control flags
-bool enableRightMotor = true;
-bool enableLeftMotor = true;
-int remainingCrossings = 2;
-bool keepLineOn = false;
-bool haltAtNextCrossing = false;
+int remainingCrossings = 1; //Crossings remaining, 0 - stop at the next crossing
+bool keepLineOn = false; //flag for detecting crossing
+unsigned int previousCrossingTimestamp = millis(); // Timer for detecting crossing in case of crossing the crossing not straight 
 
 // Motor step speed settings
-enum MotorStep {LowStep=190 ,MediumStep=200,MaxStep=210};
+enum MotorStep {LowStep=95, MediumStep=80, MaxStep=65};
+enum RobotAction {Straighten=0, RotateLeft=1, RotateRight=2};
 MotorStep rightMotorStepCount = MaxStep;
 MotorStep leftMotorStepCount = MaxStep;
+RobotAction CurrentAction = Straighten;
+
+// Rotation angle calc
+float wheelRotations = (float)(90 / 360.0 * 2);
+int32_t rotationStepCount = (int32_t)(wheelRotations * 200 * MICROSTEP);
+
 
 //Misc
 #define BUZZER 8
@@ -107,62 +115,13 @@ int readSharp3() {
 // Ultrasonic sensor readings
 int ultra1, ultra2, ultra3 = 0;
 int readUltra1() {
-  ultra1 = digitalRead(HCSR_LEFT_MB) * 2 + digitalRead(HCSR_LEFT_LB) * 1;
-  return ultra1;
+  return digitalRead(HCSR_LEFT_MB) * 2 + digitalRead(HCSR_LEFT_LB) * 1;
 }
 int readUltra2() {
-  ultra2 = digitalRead(HCSR_FORWARD_MB) * 2 + digitalRead(HCSR_FORWARD_LB) * 1;
-  return ultra2;
+  return digitalRead(HCSR_FORWARD_MB) * 2 + digitalRead(HCSR_FORWARD_LB) * 1;
 }
 int readUltra3() {
-  ultra3 = digitalRead(HCSR_RIGHT_MB) * 2 + digitalRead(HCSR_RIGHT_LB) * 1;
-  return ultra3;
-}
-
-void setup() {
-  Serial.begin(9600);
-
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB, on LEONARDO, MICRO, YUN, and other 32u4 based boards.
-  }
-  
-  xTaskCreate( // Function controlling left stepper motor
-      StepperLeft
-      ,  "StepperLeft"
-      ,  128
-      ,  NULL
-      ,  1
-      ,  NULL );
-
-
-  xTaskCreate( // Function controlling right stepper motor
-    StepperRight
-    ,  "StepperRight"
-    ,  128
-    ,  NULL
-    ,  1
-    ,  NULL );
-
-  xTaskCreate( // Function to adjust motor speed based on line tracking sensors
-    FlagStep
-    ,  "FlagStep"
-    ,  128
-    ,  NULL
-    ,  1
-    ,  NULL );
-
-}
-
-// Function controlling right stepper motor
-void StepperRight( void *pvParameters ) {
-  (void) pvParameters;
-  for (;;)
-  {
-    if (enableRightMotor) {
-      myStepperRight.step(rightMotorStepCount);
-      vTaskDelay(1);
-    }
-  }
+  return digitalRead(HCSR_RIGHT_MB) * 2 + digitalRead(HCSR_RIGHT_LB) * 1;
 }
 
 // Function controlling left stepper motor
@@ -170,9 +129,78 @@ void StepperLeft( void *pvParameters ) {
   (void) pvParameters;
   for (;;)
   {
-    if (enableLeftMotor) {
-      myStepperLeft.step(leftMotorStepCount);
-      vTaskDelay(1);
+    if (CurrentAction == Straighten) {
+      digitalWrite(L_DIR, LOW);
+      digitalWrite(L_STEP, HIGH);
+      delayMicroseconds(leftMotorStepCount);
+      digitalWrite(L_STEP, LOW);
+      delayMicroseconds(leftMotorStepCount);
+    } else if (CurrentAction == RotateRight) {
+
+      // for(int x = 0; x < rotationStepCount; x++){
+      while(!((readSensor(rightLineSensorPins[0] || rightLineSensorPins[1] || rightLineSensorPins[2]) && readSensor(leftLineSensorPins[0] || leftLineSensorPins[1] || leftLineSensorPins[2] ))&& keepLineOn == false)){
+      digitalWrite(L_DIR, LOW);
+      digitalWrite(L_STEP, HIGH);
+      delayMicroseconds(150);
+      digitalWrite(L_STEP, LOW);
+      delayMicroseconds(150);
+      }
+      remainingCrossings=1;
+      CurrentAction=Straighten;
+
+    }
+     else if (CurrentAction == RotateLeft) {
+      // for(int x = 0; x < rotationStepCount; x++){
+      while(!((readSensor(rightLineSensorPins[0] || rightLineSensorPins[1] || rightLineSensorPins[2]) && readSensor(leftLineSensorPins[0] || leftLineSensorPins[1] || leftLineSensorPins[2] ))&& keepLineOn == false)){
+      digitalWrite(L_DIR, HIGH);
+      digitalWrite(L_STEP, HIGH);
+      delayMicroseconds(150);
+      digitalWrite(L_STEP, LOW);
+      delayMicroseconds(150);
+      }
+      remainingCrossings=1;
+      CurrentAction=Straighten;
+    }
+  }
+
+}
+
+
+// Function controlling left stepper motor
+void StepperRight( void *pvParameters ) {
+  (void) pvParameters;
+  for (;;)
+  {
+    if (CurrentAction == Straighten) {
+      digitalWrite(R_DIR, LOW);
+      digitalWrite(R_STEP, HIGH);
+      delayMicroseconds(rightMotorStepCount);
+      digitalWrite(R_STEP, LOW);
+      delayMicroseconds(rightMotorStepCount);
+      
+    } else if (CurrentAction == RotateRight) {
+      // for(int x = 0; x < rotationStepCount; x++){
+      while(!((readSensor(rightLineSensorPins[0] || rightLineSensorPins[1] || rightLineSensorPins[2]) && readSensor(leftLineSensorPins[0] || leftLineSensorPins[1] || leftLineSensorPins[2] ))&& keepLineOn == false)){
+      digitalWrite(R_DIR, HIGH);
+      digitalWrite(R_STEP, HIGH);
+      delayMicroseconds(150);
+      digitalWrite(R_STEP, LOW);
+      delayMicroseconds(150);
+      }
+      remainingCrossings=1;
+      CurrentAction=Straighten;
+    }
+     else if (CurrentAction == RotateLeft) {
+      // for(int x = 0; x < rotationStepCount; x++){
+      while(!((readSensor(rightLineSensorPins[0] || rightLineSensorPins[1] || rightLineSensorPins[2]) && readSensor(leftLineSensorPins[0] || leftLineSensorPins[1] || leftLineSensorPins[2] ))&& keepLineOn == false)){
+      digitalWrite(R_DIR, LOW);
+      digitalWrite(R_STEP, HIGH);
+      delayMicroseconds(150);
+      digitalWrite(R_STEP, LOW);
+      delayMicroseconds(150);
+      }
+      remainingCrossings=1;
+      CurrentAction=Straighten;
     }
   }
 
@@ -183,74 +211,95 @@ void FlagStep(void *pvParameters)
 {
 for (;;)
   {
-    if (haltAtNextCrossing==false) {
+    if (remainingCrossings!=0) {
       int sumFront = 0, sumBack = 0;
-      for(int i=0; i<=4; i++)
-      {
-        sumFront+=readSensor(frontLineSensorPins[i]);
-        sumBack+=readSensor(backLineSensorPins[i]);
-      }
-      int priority;
-      if (sumFront==0) {
-        priority = 1;
-        
-      } else if (sumBack == 0){
-        priority=0;
-      } else {
-        if (sumFront>sumBack+1) {
-          priority=1;
-        } else {
-          priority=0;
-        }
-      }
-
-      if (readSensor(lineSensors[priority][0]) ) {
-        leftMotorStepCount = LowStep -10;
+      // for(int i=0; i<=4; i++)
+      // {
+      //   sumFront+=readSensor(frontLineSensorPins[i]);
+      //   sumBack+=readSensor(backLineSensorPins[i]);
+      // }
+      int priority=0;
+      // if (sumFront==0) {
+      //   priority = 1;
+      // } else if (sumBack == 0){
+      //   priority=0;
+      // } else {
+      //   if (sumFront<sumBack) {
+      //     priority=1;
+      //   } else {
+      //     priority=0;
+      //   }
+      // }
+       //Serial.print(priority);
+      int v = -5;
+          if (readSensor(lineSensors[priority][1])) {
+        leftMotorStepCount = MediumStep-v;
         rightMotorStepCount = MaxStep;
-        
-      }
-      else if (readSensor(lineSensors[priority][1])) {
-        leftMotorStepCount = MediumStep-10;
-        rightMotorStepCount = MaxStep;
-      }
-      else  if (readSensor(lineSensors[priority][3])) {
-        leftMotorStepCount = MaxStep-10;
+      } else  if (readSensor(lineSensors[priority][3])) {
+        leftMotorStepCount = MaxStep-v;
         rightMotorStepCount = MediumStep;
-      }
-      else if (readSensor(lineSensors[priority][4])){
-        leftMotorStepCount = MaxStep-10;
+      } 
+        else if (readSensor(lineSensors[priority][0]) ) {
+        leftMotorStepCount = LowStep -v;
+        rightMotorStepCount = MaxStep;
+      } else if (readSensor(lineSensors[priority][4])){
+        leftMotorStepCount = MaxStep-v;
         rightMotorStepCount = LowStep;
-      } else if (readSensor(lineSensors[priority][2])){
-        leftMotorStepCount = MaxStep-10;
+      }
+        else if (readSensor(lineSensors[priority][2])){
+        leftMotorStepCount = MaxStep-v;
         rightMotorStepCount = MaxStep;
       }
     }
-    //Below is intersection detection
-    Serial.print(remainingCrossings);
-    Serial.print("\n");
 
-    if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false) {
+    //Below is intersection detection
+    unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
+    if ((readSensor(rightLineSensorPins[1]) || readSensor(leftLineSensorPins[1])) && keepLineOn == false ) {
       keepLineOn = true;
-      remainingCrossings-=1;
+      previousCrossingTimestamp = millis();
       if (remainingCrossings == 0) {
-        haltAtNextCrossing = true;
-        enableLeftMotor = false;
-        enableRightMotor = false;
+        CurrentAction = RotateLeft;
       } 
-    } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0])) {
+      remainingCrossings-=1; // Decrementation after crossing the intersection
+    } else if (!readSensor(rightLineSensorPins[1]) && !readSensor(leftLineSensorPins[1]) && tempTime>=500) {
       keepLineOn = false;
     }
-
+    Serial.print(";");
+    Serial.print(CurrentAction);
+    Serial.print(";");
+    Serial.println(remainingCrossings);
+    // Serial.print(";");
+    // Serial.print(priority);
+    // Serial.print(";");
+    // Serial.print(leftMotorStepCount);
+    // Serial.print(";");
+    // Serial.println(rightMotorStepCount);
     vTaskDelay(10/portTICK_PERIOD_MS);
   }
 }
 
-void stop() {
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(L_DIR, OUTPUT);
+  pinMode(R_DIR, OUTPUT);
+  pinMode(L_STEP, OUTPUT);
+  pinMode(R_STEP, OUTPUT);
+
+  while (!Serial) {
+    ; // wait for serial port to connect. Needed for native USB, on LEONARDO, MICRO, YUN, and other 32u4 based boards.
+  }
+  
+  xTaskCreate( // Function controlling left stepper motor
+    StepperLeft, "StepperLeft", 128, NULL, 1, NULL);
+
+  xTaskCreate( // Function controlling left stepper motor
+    StepperRight, "StepperRight", 128, NULL, 1, NULL);
+
+  xTaskCreate( // Function to adjust motor speed based on line tracking sensors
+    FlagStep, "FlagStep", 128, NULL, 1, NULL);
 
 }
-
-// 3 in Ultra means there is something really close
-// 3 in Sharp means there is opponent close
 
 void loop() {
   // for (int i = 0; i <= 15; i++) {
