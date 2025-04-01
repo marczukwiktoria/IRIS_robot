@@ -36,7 +36,7 @@
 #define C14 A9
 #define C15 A5
 #define C16 A11
-#define THRESHOLD 400 //value of left back sensor is lowered artificially
+#define THRESHOLD 600 //value of left back sensor is lowered artificially
 // #define THRESHOLD 600
 
 // Arrays storing pin numbers for line sensors
@@ -71,7 +71,7 @@ void StepperLeft( void *pvParameters );
 void FlagStep(void *pvParameters);
 
 // Motor control flags
-int remainingCrossings = 3; //Crossings remaining, 0 - stop at the next crossing
+int remainingCrossings = 1; //Crossings remaining, 0 - stop at the next crossing
 bool keepLineOn = false; //flag for detecting crossing
 unsigned int previousCrossingTimestamp = millis(); // Timer for detecting crossing in case of crossing the crossing not straight 
 
@@ -226,7 +226,7 @@ for (;;)
   {
     if (CurrentAction == Straighten) {
       int frontSensors=0, backSensors=0;
-      for (int i =0;i<=5;i++) {
+      for (int i =0;i<=4;i++) {
         frontSensors+=readSensor(frontLineSensorPins[i]);
         backSensors+=readSensor(backLineSensorPins[i]);
       }
@@ -240,28 +240,52 @@ for (;;)
         priority = 0;
       }
 
-      int offset = 10; 
+      int offset = 0; 
+        Serial.print(frontSensors);
+        Serial.print(";");
+        Serial.print(backSensors);
+        Serial.print(";");
       if (readSensor(frontLineSensorPins[2]) && readSensor(backLineSensorPins[2])) {
         leftMotorStepCount = MaxStep + offset;
         rightMotorStepCount = MaxStep;
         Serial.print(0);
         Serial.print(";");
-      } else if (readSensor(frontLineSensorPins[1]) || readSensor(backLineSensorPins[1]) && !(readSensor(frontLineSensorPins[2]) && readSensor(backLineSensorPins[2]))) {
+      } else if ((readSensor(frontLineSensorPins[0]) || readSensor(frontLineSensorPins[1])) && backSensors==0) {
+        leftMotorStepCount = MaxStep + offset;
+        leftMotorStepCount = MediumStep;
+        Serial.print(10);
+        Serial.print(";");
+      } else if ((readSensor(frontLineSensorPins[0]) || readSensor(frontLineSensorPins[1])) && backSensors!=0 && !readSensor(backLineSensorPins[0]) && !readSensor(backLineSensorPins[1])) {
+        leftMotorStepCount = MaxStep + offset;
+        leftMotorStepCount = MaxStep;
+        Serial.print(11);
+        Serial.print(";");
+      } else if ((readSensor(frontLineSensorPins[3]) || readSensor(frontLineSensorPins[4])) && backSensors==0) {
+        leftMotorStepCount = MediumStep + offset;
+        leftMotorStepCount = MaxStep;
+        Serial.print(12);
+        Serial.print(";");
+      } else if ((readSensor(frontLineSensorPins[3]) || readSensor(frontLineSensorPins[4])) && backSensors!=0 && !readSensor(backLineSensorPins[4]) && !readSensor(backLineSensorPins[3])) {
+        leftMotorStepCount = MaxStep + offset;
+        leftMotorStepCount = MaxStep;
+        Serial.print(13);
+        Serial.print(";");
+      } else if (keepLineOn==false && readSensor(frontLineSensorPins[1]) && readSensor(backLineSensorPins[1]) && !(readSensor(frontLineSensorPins[2]) && readSensor(backLineSensorPins[2]))) {
         leftMotorStepCount = MaxStep + offset;
         rightMotorStepCount = MediumStep;
         Serial.print(1);
         Serial.print(";");
-      } else if (readSensor(frontLineSensorPins[3]) || readSensor(backLineSensorPins[3]) && !(readSensor(frontLineSensorPins[2]) && readSensor(backLineSensorPins[2]))) {
+      } else if (keepLineOn==false && readSensor(frontLineSensorPins[3]) && readSensor(backLineSensorPins[3]) && !(readSensor(frontLineSensorPins[2]) && readSensor(backLineSensorPins[2]))) {
         leftMotorStepCount = MediumStep + offset;
         rightMotorStepCount = MaxStep;
         Serial.print(2);
         Serial.print(";");
-      } else if (readSensor(frontLineSensorPins[0]) || readSensor(backLineSensorPins[4])) {
+      } else if (keepLineOn==false && readSensor(frontLineSensorPins[0]) || readSensor(backLineSensorPins[0])) {
         leftMotorStepCount = LowStep + offset;
         rightMotorStepCount = MaxStep;
         Serial.print(3);
         Serial.print(";");
-      } else if (readSensor(frontLineSensorPins[4]) || readSensor(backLineSensorPins[0])) {
+      } else if (keepLineOn==false && readSensor(frontLineSensorPins[4]) || readSensor(backLineSensorPins[4])) {
         leftMotorStepCount = MaxStep + offset;
         rightMotorStepCount = LowStep;
         Serial.print(4);
@@ -293,7 +317,7 @@ for (;;)
       keepLineOn = true;
       previousCrossingTimestamp = millis();
       if (remainingCrossings == 0) {
-        CurrentAction = RotateLeft;
+        CurrentAction = RotateRight;
       } 
       remainingCrossings-=1; // Decrementation after crossing the intersection
     } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=500) {
@@ -304,8 +328,8 @@ for (;;)
     Serial.print(";");
     // Serial.println(remainingCrossings);
     // Serial.print(";");
-    // Serial.print(priority);
-    // Serial.print(";");
+    Serial.print(keepLineOn);
+    Serial.print(";");
     Serial.print(leftMotorStepCount);
     Serial.print(";");
     Serial.println(rightMotorStepCount);
