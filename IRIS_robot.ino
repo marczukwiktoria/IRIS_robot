@@ -1,7 +1,6 @@
 #include <Arduino_FreeRTOS.h>
 #include <queue.h> // queue something
 
-
 //Servos
 #define SERWO_A 12
 #define SERWO_B 11
@@ -71,10 +70,10 @@ void rotateBy(int angle, bool sensored = true);
 int remainingCrossings = 4; //Crossings remaining, 0 - stop at the next crossing
 bool keepLineOn = false; //flag for detecting crossing
 unsigned int previousCrossingTimestamp = millis(); // Timer for detecting crossing in case of crossing the crossing not straight 
-int cansCount =0;
+int cansCount = 0;
 
 // Motor action settings
-enum RobotAction {Straighten=0, RotateLeft=-90, RotateRight=90, RotateBack = 180};
+enum RobotAction {Straighten=0, RotateLeft=-90, RotateRight=90};
 RobotAction CurrentAction = Straighten;
 
 // Sensor variables
@@ -293,33 +292,19 @@ void rotateBy(int angle, bool sensored = true){
   previousCrossingTimestamp = millis();
   remainingCrossings=1;
   CurrentAction=Straighten;
-
-}
-void moveStraightUntilSides(){
-  digitalWrite(R_DIR, LOW);
-  digitalWrite(L_DIR, LOW);
-  while(!readSensor(C2) || !readSensor(C10)){
-    bothMotorStep(1);
-  }
-  while(!readSensor(C2)){
-    rightMotorStep(1);
-  }
-  while(!readSensor(C10)){
-    leftMotorStep(1);
-  }
-  delay(250);
+  // make measurements? questionable
+  // TO DO
 }
 
 // Function to adjust motor speed based on line tracking sensors
 void FlagStep(void *pvParameters)
 {
-for (;;){
-
+  for (;;){
     if (CurrentAction == Straighten) {
       moveStraight(10);
-    } else if (CurrentAction == RotateRight ){
+    } else if (CurrentAction == RotateRight ) {
       rotateBy(90);
-    } else if (CurrentAction == RotateLeft ){
+    } else if (CurrentAction == RotateLeft ) {
       rotateBy(-90);
     }
   
@@ -341,7 +326,10 @@ void MakeMeasurements(void *pvParameters) {
         int Sharp1 = readSharp1();
         int Sharp2 = readSharp2();
         int Sharp3 = readSharp3();
-        if (Sharp1 >= 2 && robotPosition.rot == 0){
+
+        
+
+        if (Sharp1 >= 2 && robotPosition.rot == 0) {
           cantrix[robotPosition.posY][robotPosition.posX-1] = 1;
         } else if (Sharp1 >= 2 && robotPosition.rot == 180){
           cantrix[robotPosition.posY][robotPosition.posX+1] = 1;
@@ -450,10 +438,10 @@ void MakeDecision() {
   if (cansCount>=1) {
     if (robotPosition.rot==0) {
       if (!(robotPosition.posX-1<0)) {distanceCost[0][robotPosition.posX-1]=-1; cantrix[0][robotPosition.posX-1] = 1;}
-      if (!(robotPosition.posY+1>4)) {distanceCost[0][robotPosition.posX+1]=-1; cantrix[0][robotPosition.posX-1] = 1;}
+      if (!(robotPosition.posY+1>4)) {distanceCost[0][robotPosition.posX+1]=-1; cantrix[0][robotPosition.posX+1] = 1;}
     } else {
       distanceCost[0][robotPosition.posX] = -1;
-      cantrix[0][robotPosition.posX-1] = 1;
+      cantrix[0][robotPosition.posX] = 1;
     }
   }
   for (int i = 0; i < 5; i++) {
@@ -519,7 +507,7 @@ void MakeDecision() {
   if (abs(y_dist) >= abs(x_dist)) { // Priorytet dla osi Y jeśli odległość jest większa lub równa
     if (y_dist > 0) { // Potrzebny ruch w górę (Y+)
       if (robotPosition.rot == 180) {
-        CurrentAction = RotateBack; // Obrót o 180°
+        CurrentAction = RotateLeft; // Obrót o 180°
       }
       else if (robotPosition.rot == 90) {
         CurrentAction = RotateLeft; // Obrót w lewo (90° -> 0°)
@@ -531,7 +519,7 @@ void MakeDecision() {
     }
     else if (y_dist < 0) { // Potrzebny ruch w dół (Y-)
       if (robotPosition.rot == 0) {
-        CurrentAction = RotateBack; // Obrót o 180°
+        CurrentAction = RotateLeft; // Obrót o 180°
       }
       else if (robotPosition.rot == 90) {
         CurrentAction = RotateRight; // Obrót w prawo (90° -> 180°)
@@ -550,7 +538,7 @@ void MakeDecision() {
         CurrentAction = RotateLeft; // Obrót w lewo (180° -> 90°)
       }
       else if (robotPosition.rot == -90) {
-        CurrentAction = RotateBack; // Obrót o 180°
+        CurrentAction = RotateLeft; // Obrót o 180°
       }
       remainingCrossings = x_dist-1;
     }
@@ -562,7 +550,7 @@ void MakeDecision() {
         CurrentAction = RotateRight; // Obrót w prawo (180° -> -90°)
       }
       else if (robotPosition.rot == 90) {
-        CurrentAction = RotateBack; // Obrót o 180°
+        CurrentAction = RotateLeft; // Obrót o 180°
       }
       remainingCrossings = -x_dist-1;
     }
