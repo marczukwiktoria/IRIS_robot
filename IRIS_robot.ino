@@ -74,7 +74,7 @@ int cansCount = 0;
 
 // Motor action settings
 enum RobotAction {Straighten=0, RotateLeft=-90, RotateRight=90};
-RobotAction CurrentAction = Straighten;
+volatile RobotAction CurrentAction = Straighten;
 
 // Sensor variables
 QueueHandle_t makeMeasurementsQueue;
@@ -89,7 +89,7 @@ struct coordinates {
   int rot = 0;  // 0-forw, 90-right, 180-back, -90-left
 };
 
-bool cantrix[5][5] = {{0,0,0,0,0},{0,0,0,0,0},{0,0,0,1,0},{0,0,0,0,0},{0,0,0,0,0}};
+bool cantrix[5][5] = {{0,0,0,0,0},{0,0,0,0,0},{0,1,0,1,0},{0,0,0,0,0},{0,0,0,0,0}};
 int distanceCost[5][5] = {{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0}};
 
 int pvGripperDirection = 0;
@@ -188,6 +188,14 @@ void moveStraight(int dist, int dir = 0){
 
       //Below is intersection detection
       unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
+      
+      // Serial.print("warunki: ");
+      // Serial.print(readSensor(rightLineSensorPins[2]));
+      // Serial.print(";");
+      // Serial.print(readSensor(leftLineSensorPins[2]));
+      // Serial.print(";");
+      // Serial.print(keepLineOn == false);
+      // Serial.println(";");
       if ((readSensor(rightLineSensorPins[2]) || readSensor(leftLineSensorPins[2])) && keepLineOn == false ) {
         keepLineOn = true;
         previousCrossingTimestamp = millis();
@@ -200,8 +208,10 @@ void moveStraight(int dist, int dir = 0){
         } else if (robotPosition.rot == -90){
           robotPosition.posX = robotPosition.posX - 1;
         }
-
-        remainingCrossings-=1; // Decrementation after crossing the intersection
+        // Serial.print(robotPosition.posX);
+        // Serial.print(";");
+        // Serial.println(robotPosition.posY);
+        // remainingCrossings-=1; // Decrementation after crossing the intersection
         int one = 1;
         xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
       } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=500) {
@@ -238,7 +248,12 @@ void moveStraight(int dist, int dir = 0){
   }
 }
 
+bool isRotating = false;
 void rotateBy(int angle, bool sensored = true){
+  // if (isRotating) return; // Jeśli już trwa rotacja, wyjdź
+  // isRotating = true;
+  // Serial.println("PRE-ROTATE"); 
+  // Serial.flush();
   if (angle > 0){
     digitalWrite(L_DIR, LOW);
     digitalWrite(R_DIR, HIGH);
@@ -290,8 +305,15 @@ void rotateBy(int angle, bool sensored = true){
 
   keepLineOn=true;
   previousCrossingTimestamp = millis();
-  remainingCrossings=1;
+  // remainingCrossings=1;
   CurrentAction=Straighten;
+  
+  isRotating = false; // Odblokuj rotację
+  // Serial.println("POST-ROTATE");
+  // Serial.flush(); 
+  // vTaskDelay(50/portTICK_PERIOD_MS);
+  int one = 1;
+  xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
   // make measurements? questionable
   // TO DO
 }
@@ -302,9 +324,11 @@ void FlagStep(void *pvParameters)
   for (;;){
     if (CurrentAction == Straighten) {
       moveStraight(10);
-    } else if (CurrentAction == RotateRight ) {
+    } else if (CurrentAction == RotateRight && isRotating==false) {
+      isRotating=true;
       rotateBy(90);
-    } else if (CurrentAction == RotateLeft ) {
+    } else if (CurrentAction == RotateLeft && isRotating == false) {
+      isRotating=true;
       rotateBy(-90);
     }
   
@@ -428,21 +452,18 @@ void CalculatePath() {
 
 // Function for decision making
 void MakeDecision() {
+  // Serial.print("Decision - Current rot: "); Serial.println(robotPosition.rot);
   Serial.println("making decision");
   int y, x, lowestCost = 9999;
-  // cantrix[2][2] = 0;
+  cantrix[2][2] = 0;
   cantrix[1][1] = 0;
   cantrix[1][3] = 0;
   cantrix[3][2] = 0;
+  // cantrix[3][1] = 0;
   // Znajdź najbliższą puszkę
   if (cansCount>=1) {
-    if (robotPosition.rot==0) {
-      if (!(robotPosition.posX-1<0)) {distanceCost[0][robotPosition.posX-1]=-1; cantrix[0][robotPosition.posX-1] = 1;}
-      if (!(robotPosition.posY+1>4)) {distanceCost[0][robotPosition.posX+1]=-1; cantrix[0][robotPosition.posX+1] = 1;}
-    } else {
-      distanceCost[0][robotPosition.posX] = -1;
-      cantrix[0][robotPosition.posX] = 1;
-    }
+    distanceCost[0][robotPosition.posX] = -1;
+    cantrix[0][robotPosition.posX] = 1;
   }
   for (int i = 0; i < 5; i++) {
     for (int j = 0; j < 5; j++) {
@@ -466,39 +487,38 @@ void MakeDecision() {
   Serial.println(lowestCost);
 
   // Sprawdź czy jesteśmy już w docelowej pozycji
-  if (x_dist == 0 && y_dist == 0) {
-    int one = 1;
-    xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-    return;
-  }
+  // if (x_dist == 0 && y_dist == 0) {
+  //   Serial.print("jestesmy zjebani");
+  //   return;
+  // }
 
 
   // Najpierw spróbuj poruszać się w aktualnym kierunku
   if (robotPosition.rot == 0 && y_dist > 0) { // Obrót 0° - ruch w górę (Y+)
     remainingCrossings = y_dist-1;
     CurrentAction = Straighten;
-    // Serial.print("Moving forward (Y+), remaining: ");
+    Serial.print("Moving forward (Y+), remaining: ");
     Serial.println(remainingCrossings);
     return;
   }
   else if (robotPosition.rot == 180 && y_dist < 0) { // Obrót 180° - ruch w dół (Y-)
     remainingCrossings = -y_dist-1;
     CurrentAction = Straighten;
-    // Serial.print("Moving forward (Y-), remaining: ");
+    Serial.print("Moving forward (Y-), remaining: ");
     Serial.println(remainingCrossings);
     return;
   }
   else if (robotPosition.rot == 90 && x_dist > 0) { // Obrót 90° - ruch w prawo (X+)
     remainingCrossings = x_dist-1;
     CurrentAction = Straighten;
-    // Serial.print("Moving forward (X+), remaining: ");
-    Serial.println(remainingCrossings);
+    Serial.print("Moving forward (X+), remaining: ");
+    // Serial.println(remainingCrossings);
     return;
   }
   else if (robotPosition.rot == -90 && x_dist < 0) { // Obrót -90° - ruch w lewo (X-)
     remainingCrossings = -x_dist-1;
     CurrentAction = Straighten;
-    // Serial.print("Moving forward (X-), remaining: ");
+    Serial.print("Moving forward (X-), remaining: ");
     Serial.println(remainingCrossings);
     return;
   }
@@ -507,52 +527,60 @@ void MakeDecision() {
   if (abs(y_dist) >= abs(x_dist)) { // Priorytet dla osi Y jeśli odległość jest większa lub równa
     if (y_dist > 0) { // Potrzebny ruch w górę (Y+)
       if (robotPosition.rot == 180) {
+        Serial.print(0);
         CurrentAction = RotateLeft; // Obrót o 180°
       }
       else if (robotPosition.rot == 90) {
+        Serial.print(1);
         CurrentAction = RotateLeft; // Obrót w lewo (90° -> 0°)
       }
       else if (robotPosition.rot == -90) {
+        Serial.print(2);
         CurrentAction = RotateRight; // Obrót w prawo (-90° -> 0°)
       }
-      remainingCrossings = y_dist-1;
     }
     else if (y_dist < 0) { // Potrzebny ruch w dół (Y-)
       if (robotPosition.rot == 0) {
+        Serial.print(10);
         CurrentAction = RotateLeft; // Obrót o 180°
       }
       else if (robotPosition.rot == 90) {
+        Serial.print(11);
         CurrentAction = RotateRight; // Obrót w prawo (90° -> 180°)
       }
       else if (robotPosition.rot == -90) {
+        Serial.print(12);
         CurrentAction = RotateLeft; // Obrót w lewo (-90° -> 180°)
       }
-      remainingCrossings = -y_dist-1;
     }
   } else { // Priorytet dla osi X
     if (x_dist > 0) { // Potrzebny ruch w prawo (X+)
       if (robotPosition.rot == 0) {
+        Serial.print(20);
         CurrentAction = RotateRight; // Obrót w prawo (0° -> 90°)
       }
       else if (robotPosition.rot == 180) {
+        Serial.print(21);
         CurrentAction = RotateLeft; // Obrót w lewo (180° -> 90°)
       }
       else if (robotPosition.rot == -90) {
+        Serial.print(22);
         CurrentAction = RotateLeft; // Obrót o 180°
       }
-      remainingCrossings = x_dist-1;
     }
     else if (x_dist < 0) { // Potrzebny ruch w lewo (X-)
       if (robotPosition.rot == 0) {
+        Serial.print(30);
         CurrentAction = RotateLeft; // Obrót w lewo (0° -> -90°)
       }
       else if (robotPosition.rot == 180) {
+        Serial.print(31);
         CurrentAction = RotateRight; // Obrót w prawo (180° -> -90°)
       }
       else if (robotPosition.rot == 90) {
+        Serial.print(32);
         CurrentAction = RotateLeft; // Obrót o 180°
       }
-      remainingCrossings = -x_dist-1;
     }
   }
 }
@@ -602,10 +630,10 @@ void setup() {
 
 
   xTaskCreate( // Function to adjust motor speed based on line tracking sensors
-    FlagStep, "FlagStep", 256, NULL, 1, NULL);
+    FlagStep, "FlagStep", 1024, NULL, 1, NULL);
 
   xTaskCreate( // Function to make measurements
-    MakeMeasurements, "MakeMeasurements", 128, NULL, 1, NULL);
+    MakeMeasurements, "MakeMeasurements", 512, NULL, 1, NULL);
 
   xTaskCreate( // Function to adjust motor speed based on line tracking sensors
     DisplayToSerial, "DisplayToSerial", 256, NULL, 1, NULL);
@@ -622,13 +650,15 @@ void DisplayToSerial(void *pvParameters) {
   for (;;){
     Serial.print(CurrentAction);
     Serial.print(";");
+    Serial.print(remainingCrossings);
+    Serial.print(";");
     Serial.print(robotPosition.posX);
     Serial.print(";");
     Serial.print(robotPosition.posY);
     Serial.print(";");
     Serial.print(robotPosition.rot);
-    Serial.print(";");
-    Serial.print(cansCount);
+    // Serial.print(";");
+    // Serial.print(cansCount);
     Serial.println(";");  
     // for (int x=4;x>=0;x--){
     //   for (int y=0;y<5;y++){
@@ -637,7 +667,7 @@ void DisplayToSerial(void *pvParameters) {
     //   }
     //   Serial.println(";");
     // }
-    vTaskDelay(1000/portTICK_PERIOD_MS);
+    vTaskDelay(10/portTICK_PERIOD_MS);
   }
 }
 
