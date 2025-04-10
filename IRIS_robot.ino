@@ -82,7 +82,7 @@ QueueHandle_t makeMeasurementsQueue;
 // Going squares
 int n = 0;
 // int rectanglePoints[4][2] = {{1,4},{1,1},{3,1},{3,4}};
-int rectanglePoints[4][2] = {{1,3},{1,1},{3,1},{3,3}};
+int rectanglePoints[4][2] = {{1,4},{1,1},{3,1},{3,4}};
 
 //Misc
 #define BUZZER 8
@@ -185,10 +185,9 @@ void moveStraight(int dist, int dir = 0){
           bothMotorStep(1);
           leftMotorStep(1);
         }
+      } else {
+        bothMotorStep(3);
       }
-        else{
-          bothMotorStep(3);
-        }
 
       //Below is intersection detection
       unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
@@ -197,11 +196,11 @@ void moveStraight(int dist, int dir = 0){
         previousCrossingTimestamp = millis();
         if (robotPosition.rot == 0){
           robotPosition.posY = robotPosition.posY + 1;
-        } else if (robotPosition.rot == 180){
+        } else if (robotPosition.rot == 180) {
           robotPosition.posY = robotPosition.posY - 1;
-        } else if (robotPosition.rot == 90){
+        } else if (robotPosition.rot == 90) {
           robotPosition.posX = robotPosition.posX + 1;
-        } else if (robotPosition.rot == -90){
+        } else if (robotPosition.rot == -90) {
           robotPosition.posX = robotPosition.posX - 1;
         }
         int one = 1;
@@ -246,6 +245,7 @@ void rotateBy(int angle, bool sensored = true){
   // isRotating = true;
   // Serial.println("PRE-ROTATE"); 
   // Serial.flush();
+  if (cansCount != 0 ) {Gripper(1);}
   if (angle > 0){
     digitalWrite(L_DIR, LOW);
     digitalWrite(R_DIR, HIGH);
@@ -305,6 +305,7 @@ void rotateBy(int angle, bool sensored = true){
   // Serial.flush(); 
   int one = 1;
   xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
+  if (cansCount!= 0) {Gripper(0);}
 }
 
 // Function to adjust motor speed based on line tracking sensors
@@ -350,12 +351,13 @@ void MakeMeasurements(void *pvParameters) {
         // int Ultra3 = readUltra3();
 
         //if ulra detects, it's enemy!
-        // Serial.print(Sharp1);
-        // Serial.print(";");
-        // Serial.print(Sharp2);
-        // Serial.print(";");
-        // Serial.print(Sharp3);
-        // Serial.println(";");
+        Serial.print("sharps; ");
+        Serial.print(Sharp1);
+        Serial.print(";");
+        Serial.print(Sharp2);
+        Serial.print(";");
+        Serial.print(Sharp3);
+        Serial.println(";");
         if (
           !(robotPosition.posX == 0 && robotPosition.rot == 0) &&
           !(robotPosition.posX == 4 && robotPosition.rot == 180) &&
@@ -397,14 +399,19 @@ void MakeMeasurements(void *pvParameters) {
             !(robotPosition.posY == 1 && robotPosition.rot == 180) &&
             !(robotPosition.posY == 4 && robotPosition.rot == 0)
           ) {
+            Serial.println("we got there boys");
             if (Sharp2 >= 2 && robotPosition.rot == 0){
               cantrix[robotPosition.posY+1][robotPosition.posX] = 1;
+            Serial.println("we got there boys 1 ");
             } else if (Sharp2 >= 2 && robotPosition.rot == 180){
               cantrix[robotPosition.posY-1][robotPosition.posX] = 1;
+            Serial.println("we got there boys 2");
             } else if (Sharp2 >= 2 && robotPosition.rot == 90){
               cantrix[robotPosition.posY][robotPosition.posX+1] = 1;
+            Serial.println("we got there boys 3");
             } else if (Sharp2 >= 2 && robotPosition.rot == -90){
               cantrix[robotPosition.posY][robotPosition.posX-1] = 1;
+            Serial.println("we got there boys 4");
             }
           }
         }
@@ -419,6 +426,7 @@ void CalculatePath() {
   Serial.println("calculating path");
   int y_lowest, x_lowest, lowestCost = 9999;
   bool canOnBoard = false;
+  bool virtualCanOnBoard = false;
   for (int y = 1; y<5; y++) {
     for (int x = 0; x<5; x++) {
       if (cantrix[y][x] == 1) {
@@ -476,7 +484,7 @@ void CalculatePath() {
           lowestCost = distanceCost[y][x];
         }
       } else if (cantrix[y][x]==2) {
-        canOnBoard = true;
+        virtualCanOnBoard = true;
         cantrix[y][x] = 2;
         distanceCost[y][x] = -1;
       } else {
@@ -500,8 +508,8 @@ void CalculatePath() {
   Serial.print(";");
   Serial.print(canOnBoard);
   Serial.print(";");
-  Serial.println(canOnBoard);
-  if (canOnBoard == false && cansCount == 0) {
+  Serial.println(virtualCanOnBoard);
+  if (canOnBoard == false && virtualCanOnBoard == false && cansCount == 0) {
     //add virtual can
     cantrix[rectanglePoints[n][1]][rectanglePoints[n][0]] = 2;
     distanceCost[rectanglePoints[n][1]][rectanglePoints[n][0]] = -1;
@@ -512,7 +520,7 @@ void CalculatePath() {
   } 
 
   // Znajdź najbliższą puszkę
-  if (cansCount>=2 || (canOnBoard = false && cansCount == 1)) {
+  if (cansCount>=2 || (canOnBoard == false && cansCount == 1)) {
     distanceCost[0][robotPosition.posX] = -1;
     cantrix[0][robotPosition.posX] = 1;
     x_lowest = robotPosition.posX;
@@ -614,32 +622,29 @@ void MakeDecision(int x, int y) {
   }
 }
 
-// void Gripper(void * pvParameters){
-//   int direction = (int) pvParameters;
-//   for (;;){
-//     if (direction == 0){
-//       for(int i = 0; i<200; i++){
-//         digitalWrite(SERWO_A, HIGH);
-//         digitalWrite(SERWO_B, HIGH);
-//         delayMicroseconds(750);
-//         digitalWrite(SERWO_A, LOW);
-//         delayMicroseconds(1400);
-//         digitalWrite(SERWO_B, LOW);
-//         delayMicroseconds(17850);
-//       }
-//     }else{
-//         for(int i = 0; i<200; i++){
-//       digitalWrite(SERWO_A, HIGH);
-//       digitalWrite(SERWO_B, HIGH);
-//       delayMicroseconds(1300);
-//       digitalWrite(SERWO_B, LOW);
-//       delayMicroseconds(300);
-//       digitalWrite(SERWO_A, LOW);
-//       delayMicroseconds(18400);
-//       }
-//     }
-//   }
-// }
+void Gripper(int direction) {
+  if (direction == 0){
+    for(int i = 0; i<200; i++){
+      digitalWrite(SERWO_A, HIGH);
+      digitalWrite(SERWO_B, HIGH);
+      delayMicroseconds(750);
+      digitalWrite(SERWO_A, LOW);
+      delayMicroseconds(1400);
+      digitalWrite(SERWO_B, LOW);
+      delayMicroseconds(17850);
+    }
+  } else {
+    for(int i = 0; i<200; i++){
+      digitalWrite(SERWO_A, HIGH);
+      digitalWrite(SERWO_B, HIGH);
+      delayMicroseconds(1300);
+      digitalWrite(SERWO_B, LOW);
+      delayMicroseconds(300);
+      digitalWrite(SERWO_A, LOW);
+      delayMicroseconds(18400);
+    }
+  }
+}
 
 
 
@@ -679,8 +684,8 @@ void DisplayToSerial(void *pvParameters) {
   for (;;){
     Serial.print(CurrentAction);
     Serial.print(";");
-    Serial.print(remainingCrossings);
-    Serial.print(";");
+    // Serial.print(remainingCrossings);
+    // Serial.print(";");
     Serial.print(robotPosition.posX);
     Serial.print(";");
     Serial.print(robotPosition.posY);
@@ -688,16 +693,16 @@ void DisplayToSerial(void *pvParameters) {
     Serial.print(robotPosition.rot);
     Serial.print(";");
     Serial.print(cansCount);
-    Serial.print(";");  
-    Serial.print(n);
+    // Serial.print(";");  
+    // Serial.print(n);
     Serial.println(";");  
-    // for (int x=4;x>=0;x--){
-    //   for (int y=0;y<5;y++){
-    //   Serial.print(distanceCost[x][y]);
-    //   Serial.print(";");
-    //   }
-    //   Serial.println(";");
-    // }
+    for (int x=4;x>=0;x--){
+      for (int y=0;y<5;y++){
+      Serial.print(cantrix[x][y]);
+      Serial.print(";");
+      }
+      Serial.println(";");
+    }
     vTaskDelay(1000/portTICK_PERIOD_MS);
   }
 }
