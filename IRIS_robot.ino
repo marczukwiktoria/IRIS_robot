@@ -103,7 +103,8 @@ QueueHandle_t makeMeasurementsQueue;
 
 // Going squares
 int n = 0;
-int rectanglePoints[4][2] = {{1,4},{1,1},{3,1},{3,4}};
+// int rectanglePoints[4][2] = {{1,4},{1,1},{3,1},{3,4}};
+int rectanglePoints[4][2] = {{1,2},{1,1},{3,1},{3,2}};
 int cantrix[5][5] = {{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0}};
 int distanceCost[5][5] = {{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0}};
 
@@ -338,7 +339,7 @@ void returnCans() {
     moveStraight(380);
     moveStraight(120);
     gripper(0);
-    moveStraight(80,1);
+    moveStraight(120,1);
     rotateBy(-90);
   }
 
@@ -550,8 +551,6 @@ void calculatePath() {
     }  
   }
 
-
-
   Serial.print("cc");
   Serial.print(cansCount);
   Serial.print(";");
@@ -598,6 +597,34 @@ void makeDecision(int x, int y) {
   // Calculate dist in x and y
   int y_dist = y - robotPosition.posY;
   int x_dist = x - robotPosition.posX;
+
+
+  if (y == 0 && (x==1 || x==3) && x_dist !=0 && robotPosition.posX!=2) {
+    if (robotPosition.posX==0) {
+      if (robotPosition.rot == 0) {
+        CurrentAction = RotateRight; // Obrót o 180°
+      } else if (robotPosition.rot == 180) {
+        CurrentAction = RotateLeft;
+      } else if (robotPosition.rot == 90) {
+        CurrentAction = Straighten;
+        remainingCrossings = 0;
+      } else if (robotPosition.rot == -90) { 
+        CurrentAction = RotateLeft;
+      }
+    } else if (robotPosition.posX==4) {
+      if (robotPosition.rot == 0) {
+        CurrentAction = RotateLeft; // Obrót o 180°
+      } else if (robotPosition.rot == 180) {
+        CurrentAction = RotateRight;
+      } else if (robotPosition.rot == -90) {
+        CurrentAction = Straighten;
+        remainingCrossings = 0;
+      } else if (robotPosition.rot == 90) { 
+        CurrentAction = RotateRight;
+      }
+    }
+    return;
+  }
 
   // Najpierw spróbuj poruszać się w aktualnym kierunku
   if (robotPosition.rot == 0 && y_dist > 0) { // Obrót 0° - ruch w górę (Y+)
