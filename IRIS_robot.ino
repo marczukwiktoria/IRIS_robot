@@ -86,6 +86,8 @@ bool keepLineOn = false; //flag for detecting crossing
 unsigned int previousCrossingTimestamp = millis(); // Timer for detecting crossing in case of crossing the crossing not straight 
 int cansCount = 0;
 int stepsDone = 0;
+unsigned int previousRotationTimestamp = millis();
+
 
 // Motor action settings
 enum RobotAction {Straighten=0, RotateLeft=-90, RotateRight=90, Retreat =-1};
@@ -107,6 +109,7 @@ int n = 3;
 int n_coeff = 1;
 bool change_n = false;
 bool opponentAhead = false;
+bool oponentDetected = false;
 int rectanglePoints[4][2] = {{1,4},{1,1},{3,1},{3,4}};
 // int rectanglePoints[4][2] = {{1,2},{1,1},{3,1},{3,2}};
 int cantrix[5][5] = {{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0}};
@@ -224,7 +227,7 @@ void moveStraight(int dist, int dir = 0){
         stepsDone=0;
         int one = 1;
         xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-      } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=800) {
+      } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=1200) {
         keepLineOn = false;
       }
     }
@@ -263,7 +266,7 @@ void moveStraight(int dist, int dir = 0){
         stepsDone = 0;
         int one = 1;
         xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-      } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=400) {
+      } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=800) {
         keepLineOn = false;
       }
     }
@@ -273,7 +276,7 @@ void moveStraight(int dist, int dir = 0){
 void rotateBy(int angle, bool sensored = true) {
   // Serial.println("PRE-ROTATE"); 
   // Serial.flush();
-  // if (cansCount != 0 ) {gripper(1);}
+  if (cansCount != 0 ) {gripper(1);}
   if (angle > 0){
     digitalWrite(L_DIR, LOW);
     digitalWrite(R_DIR, HIGH);
@@ -330,9 +333,11 @@ void rotateBy(int angle, bool sensored = true) {
   isRotating = false;
   // Serial.println("POST-ROTATE");
   // Serial.flush(); 
+  previousRotationTimestamp = millis();
+  stepsDone = 0;
   int one = 1;
   xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-  // if (cansCount!= 0) {gripper(0);}
+  if (cansCount!= 0) {gripper(0);}
 }
 
 //Logic for placing cans in base
@@ -361,6 +366,7 @@ void returnCans() {
   goingToBase = false;
   puttingBackCans = false;
   cansCount = 0;
+  oponentDetected = false;
 }
 
 void OpponentDetection(void *pvParameters) {
@@ -368,12 +374,16 @@ void OpponentDetection(void *pvParameters) {
     int frontSensorReading = readUltra2();
     if (frontSensorReading>=2 && CurrentAction==Straighten) {
       opponentAhead=true;
-      if (stepsDone==0) {
+      oponentDetected = true;
+      if (stepsDone<=70) {
         //jestesmy na skrzyzowaniu
+        int one = 1;
+        xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
       } else if (stepsDone>=211) { //211 is prime
         CurrentAction = Straighten;
       } else {
         CurrentAction = Retreat;
+        if (cansCount>=1) {gripper(1);}
         bool canAtBoard = false;
         for (int i = 0;i<5;i++) {
           for (int j = 0;j<5;j++) {
@@ -390,6 +400,7 @@ void OpponentDetection(void *pvParameters) {
           n_coeff = -n_coeff;
           change_n = true;
         }
+        keepLineOn=false;
       }
     }
     vTaskDelay(200/portTICK_PERIOD_MS);
@@ -455,9 +466,15 @@ void MakeMeasurements(void *pvParameters) {
         int Ultra1 = readUltra1();
         int Ultra2 = readUltra2();
         int Ultra3 = readUltra3();
-        if (Ultra2>=2) {opponentAhead = true;}
+        if (Ultra2>=2) {opponentAhead = true;oponentDetected=true;}
         //if ultra detects, it's enemy!
         Serial.print("ultras; ");
+        Serial.print(Sharp1);
+        Serial.print(";");
+        Serial.print(Sharp2);
+        Serial.print(";");
+        Serial.print(Sharp3);
+        Serial.print(";");
         Serial.print(Ultra1);
         Serial.print(";");
         Serial.print(Ultra2);
@@ -679,6 +696,9 @@ void calculatePath() {
     cantrix[rectanglePoints[n][1]][rectanglePoints[n][0]] = 0;
     distanceCost[rectanglePoints[n][1]][rectanglePoints[n][0]] = 0;
     n = n + (1*n_coeff);
+    if (rectanglePoints[n][1] == robotPosition.posY && rectanglePoints[n][0] == robotPosition.posX) {
+      n = n + (1*n_coeff);
+    } 
     if(n>3) {n=0;}
     if(n<0) {n=3;}
     cantrix[rectanglePoints[n][1]][rectanglePoints[n][0]] = 2;
@@ -689,17 +709,48 @@ void calculatePath() {
   }
 
   // Go to base
+  int previousGoingTobaseIteration = goingToBase;
   goingToBase = false;
   if (cansCount>=2 || (canOnBoard == false && cansCount == 1)) {
-    distanceCost[0][robotPosition.posX] = -1;
-    cantrix[0][robotPosition.posX] = 1;
-    if (robotPosition.posX<2) {
-      x_lowest = 1;
-    } else {
-      x_lowest = 3;
+    // if (oponentDetected) {
+    //   if (robotPosition.posX == 1) {
+    //     cantrix[0][1] = 0;
+    //     cantrix[0][3] = 1;
+    //     distanceCost[0][1] = 0;
+    //     distanceCost[0][3] = -1;
+    //     x_lowest = 3;
+    //   } else {
+    //     cantrix[0][1] = 1;
+    //     cantrix[0][3] = 0;
+    //     distanceCost[0][1] = -1;
+    //     distanceCost[0][3] = 0;
+    //     x_lowest = 1;
+    //   }
+    // } else {
+    //   distanceCost[0][robotPosition.posX] = -1;
+    //   cantrix[0][robotPosition.posX] = 1;
+    //   if (robotPosition.posX<2) {
+    //     x_lowest = 1;
+    //   } else {
+    //     x_lowest = 3;
+    //   }
+    // }
+    if (previousGoingTobaseIteration == true && cantrix[0][1] == 0 && cantrix[0][3] == 0) {
+      //enemy emptied our can
+      if (robotPosition.posX>=2) {
+        x_lowest = 1;
+        distanceCost[0][1] = -1;
+        cantrix[0][1] = 1;
+      } else {
+        x_lowest = 3;
+        distanceCost[0][3] = -1;
+        cantrix[0][3] = 1;
+      }
     }
+
     y_lowest = 0;
     goingToBase = true;
+    lowestCost = -1;
   }
 
   Serial.print("Target: X=");
@@ -928,8 +979,8 @@ void DisplayToSerial(void *pvParameters) {
   for (;;){
     Serial.print(CurrentAction);
     Serial.print(";");
-    Serial.print(keepLineOn);
-    Serial.print(";");
+    // Serial.print(keepLineOn);
+    // Serial.print(";");
     Serial.print(robotPosition.posX);
     Serial.print(";");
     Serial.print(robotPosition.posY);
