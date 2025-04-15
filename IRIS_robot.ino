@@ -84,10 +84,8 @@ void gripper(int direction); // 0 -> Up, 1-> Down
 int remainingCrossings = 4; //Crossings remaining, 0 - stop at the next crossing
 bool keepLineOn = false; //flag for detecting crossing
 unsigned int previousCrossingTimestamp = millis(); // Timer for detecting crossing in case of crossing the crossing not straight 
-int cansCount = 0;
-int stepsDone = 0;
-unsigned int previousRotationTimestamp = millis();
-
+int cansCount = 0; // Cans count in our gripper
+int stepsDone = 0; // Steps count for reversing
 
 // Motor action settings
 enum RobotAction {Straighten=0, RotateLeft=-90, RotateRight=90, Retreat =-1};
@@ -274,8 +272,6 @@ void moveStraight(int dist, int dir = 0){
 }
 
 void rotateBy(int angle, bool sensored = true) {
-  // Serial.println("PRE-ROTATE"); 
-  // Serial.flush();
   if (cansCount != 0 ) {gripper(1);}
   if (angle > 0){
     digitalWrite(L_DIR, LOW);
@@ -331,9 +327,6 @@ void rotateBy(int angle, bool sensored = true) {
   CurrentAction=Straighten;
   
   isRotating = false;
-  // Serial.println("POST-ROTATE");
-  // Serial.flush(); 
-  previousRotationTimestamp = millis();
   stepsDone = 0;
   int one = 1;
   xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
@@ -712,32 +705,19 @@ void calculatePath() {
   int previousGoingTobaseIteration = goingToBase;
   goingToBase = false;
   if (cansCount>=2 || (canOnBoard == false && cansCount == 1)) {
-    // if (oponentDetected) {
-    //   if (robotPosition.posX == 1) {
-    //     cantrix[0][1] = 0;
-    //     cantrix[0][3] = 1;
-    //     distanceCost[0][1] = 0;
-    //     distanceCost[0][3] = -1;
-    //     x_lowest = 3;
-    //   } else {
-    //     cantrix[0][1] = 1;
-    //     cantrix[0][3] = 0;
-    //     distanceCost[0][1] = -1;
-    //     distanceCost[0][3] = 0;
-    //     x_lowest = 1;
-    //   }
-    // } else {
-    //   distanceCost[0][robotPosition.posX] = -1;
-    //   cantrix[0][robotPosition.posX] = 1;
-    //   if (robotPosition.posX<2) {
-    //     x_lowest = 1;
-    //   } else {
-    //     x_lowest = 3;
-    //   }
-    // }
     if (previousGoingTobaseIteration == true && cantrix[0][1] == 0 && cantrix[0][3] == 0) {
-      //enemy emptied our can
+      // Enemy emptied our base can
       if (robotPosition.posX>=2) {
+        x_lowest = 1;
+        distanceCost[0][1] = -1;
+        cantrix[0][1] = 1;
+      } else {
+        x_lowest = 3;
+        distanceCost[0][3] = -1;
+        cantrix[0][3] = 1;
+      }
+    } else {
+      if (robotPosition.posX<2) {
         x_lowest = 1;
         distanceCost[0][1] = -1;
         cantrix[0][1] = 1;
@@ -774,7 +754,7 @@ void makeDecision(int x, int y) {
     if (y == 0 && (x==1 || x==3) && x_dist !=0 && robotPosition.posX!=2) {
       if (robotPosition.posX==0) {
         if (robotPosition.rot == 0) {
-          CurrentAction = RotateRight; // Obrót o 180°
+          CurrentAction = RotateRight; // Rotation by 180
         } else if (robotPosition.rot == 180) {
           CurrentAction = RotateLeft;
         } else if (robotPosition.rot == 90) {
@@ -785,7 +765,7 @@ void makeDecision(int x, int y) {
         }
       } else if (robotPosition.posX==4) {
         if (robotPosition.rot == 0) {
-          CurrentAction = RotateLeft; // Obrót o 180°
+          CurrentAction = RotateLeft; // Rotation by 180
         } else if (robotPosition.rot == 180) {
           CurrentAction = RotateRight;
         } else if (robotPosition.rot == -90) {
@@ -798,121 +778,121 @@ void makeDecision(int x, int y) {
       return;
     }
 
-    // Najpierw spróbuj poruszać się w aktualnym kierunku
-    if (robotPosition.rot == 0 && y_dist > 0) { // Obrót 0° - ruch w górę (Y+)
+    // First try moving straight if you can
+    if (robotPosition.rot == 0 && y_dist > 0) { // Rotation by 0 - go up (Y+)
       remainingCrossings = y_dist-1;
       CurrentAction = Straighten;
       return;
     }
-    else if (robotPosition.rot == 180 && y_dist < 0) { // Obrót 180° - ruch w dół (Y-)
+    else if (robotPosition.rot == 180 && y_dist < 0) { // Rotation by 180 - go down (Y-)
       remainingCrossings = -y_dist-1;
       CurrentAction = Straighten;
       return;
     }
-    else if (robotPosition.rot == 90 && x_dist > 0) { // Obrót 90° - ruch w prawo (X+)
+    else if (robotPosition.rot == 90 && x_dist > 0) { // Rotation by 90 - go right (X+)
       remainingCrossings = x_dist-1;
       CurrentAction = Straighten;
       return;
     }
-    else if (robotPosition.rot == -90 && x_dist < 0) { // Obrót -90° - ruch w lewo (X-)
+    else if (robotPosition.rot == -90 && x_dist < 0) { // Rotation by -90 - go left (X-)
       remainingCrossings = -x_dist-1;
       CurrentAction = Straighten;
       return;
     }
 
-    // Jeśli nie możemy jechać prosto w aktualnym kierunku, wykonaj obrót
-    if (abs(y_dist) >= abs(x_dist)) { // Priorytet dla osi Y jeśli odległość jest większa lub równa
-      if (y_dist > 0) { // Potrzebny ruch w górę (Y+)
+    // If we can't go straight, rotate
+    if (abs(y_dist) >= abs(x_dist)) { // Priority for Y movement if distance is bigger or equal
+      if (y_dist > 0) { // Up direction movement needed  (Y+)
         if (robotPosition.rot == 180) {
-          CurrentAction = RotateLeft; // Obrót o 180°
+          CurrentAction = RotateLeft; // Rotation by 180
         }
         else if (robotPosition.rot == 90) {
-          CurrentAction = RotateLeft; // Obrót w lewo (90° -> 0°)
+          CurrentAction = RotateLeft; // Rotation left (90 -> 0)
         }
         else if (robotPosition.rot == -90) {
-          CurrentAction = RotateRight; // Obrót w prawo (-90° -> 0°)
+          CurrentAction = RotateRight; //  Rotation right(-90 -> 0)
         }
       }
-      else if (y_dist < 0) { // Potrzebny ruch w dół (Y-)
+      else if (y_dist < 0) { // Down direction movement needed  (Y-)
         if (robotPosition.rot == 0) {
-          CurrentAction = RotateLeft; // Obrót o 180°
+          CurrentAction = RotateLeft; // Rotation by 180
         }
         else if (robotPosition.rot == 90) {
-          CurrentAction = RotateRight; // Obrót w prawo (90° -> 180°)
+          CurrentAction = RotateRight; //  Rotation right(90 -> 180)
         }
         else if (robotPosition.rot == -90) {
-          CurrentAction = RotateLeft; // Obrót w lewo (-90° -> 180°)
+          CurrentAction = RotateLeft; // Rotation left (-90 -> 180)
         }
       }
-    } else { // Priorytet dla osi X
-      if (x_dist > 0) { // Potrzebny ruch w prawo (X+)
+    } else { // Priority for X axis
+      if (x_dist > 0) { // Right direction movement needed  (X+)
         if (robotPosition.rot == 0) {
-          CurrentAction = RotateRight; // Obrót w prawo (0° -> 90°)
+          CurrentAction = RotateRight; //  Rotation right(0 -> 90)
         }
         else if (robotPosition.rot == 180) {
-          CurrentAction = RotateLeft; // Obrót w lewo (180° -> 90°)
+          CurrentAction = RotateLeft; // Rotation left (180 -> 90)
         }
         else if (robotPosition.rot == -90) {
-          CurrentAction = RotateLeft; // Obrót o 180°
+          CurrentAction = RotateLeft; // Rotation by 180
         }
       }
-      else if (x_dist < 0) { // Potrzebny ruch w lewo (X-)
+      else if (x_dist < 0) { // Left direction movement needed  (X-)
         if (robotPosition.rot == 0) {
-          CurrentAction = RotateLeft; // Obrót w lewo (0° -> -90°)
+          CurrentAction = RotateLeft; // Rotation left (0 -> -90)
         }
         else if (robotPosition.rot == 180) {
-          CurrentAction = RotateRight; // Obrót w prawo (180° -> -90°)
+          CurrentAction = RotateRight; //  Rotation right(180 -> -90)
         }
         else if (robotPosition.rot == 90) {
-          CurrentAction = RotateLeft; // Obrót o 180°
+          CurrentAction = RotateLeft; // Rotation by 180
         }
       }
     } 
   } else { // HERE IS A LOGIC WHEN OPPONENT IS AHEAD
-    if (abs(y_dist) < abs(x_dist)) { // Priorytet dla osi Y jeśli odległość jest większa lub równa
-      if (y_dist > 0) { // Potrzebny ruch w górę (Y+)
+    if (abs(y_dist) < abs(x_dist)) { // Priority for Y movement if distance is bigger or equal
+      if (y_dist > 0) { // Up direction movement needed  (Y+)
         if (robotPosition.rot == 180) {
-          CurrentAction = RotateLeft; // Obrót o 180°
+          CurrentAction = RotateLeft; // Rotation by 180
         }
         else if (robotPosition.rot == 90) {
-          CurrentAction = RotateLeft; // Obrót w lewo (90° -> 0°)
+          CurrentAction = RotateLeft; // Rotation left (90 -> 0)
         }
         else if (robotPosition.rot == -90) {
-          CurrentAction = RotateRight; // Obrót w prawo (-90° -> 0°)
+          CurrentAction = RotateRight; //  Rotation right(-90 -> 0)
         }
       }
-      else if (y_dist < 0) { // Potrzebny ruch w dół (Y-)
+      else if (y_dist < 0) { // Down direction movement needed  (Y-)
         if (robotPosition.rot == 0) {
-          CurrentAction = RotateLeft; // Obrót o 180°
+          CurrentAction = RotateLeft; // Rotation by 180
         }
         else if (robotPosition.rot == 90) {
-          CurrentAction = RotateRight; // Obrót w prawo (90° -> 180°)
+          CurrentAction = RotateRight; //  Rotation right(90 -> 180)
         }
         else if (robotPosition.rot == -90) {
-          CurrentAction = RotateLeft; // Obrót w lewo (-90° -> 180°)
+          CurrentAction = RotateLeft; // Rotation left (-90 -> 180)
         }
       }
-    } else { // Priorytet dla osi X
-      if (x_dist > 0) { // Potrzebny ruch w prawo (X+)
+    } else { // Priority for X axis
+      if (x_dist > 0) { // Right direction movement needed  (X+)
         if (robotPosition.rot == 0) {
-          CurrentAction = RotateRight; // Obrót w prawo (0° -> 90°)
+          CurrentAction = RotateRight; //  Rotation right(0 -> 90)
         }
         else if (robotPosition.rot == 180) {
-          CurrentAction = RotateLeft; // Obrót w lewo (180° -> 90°)
+          CurrentAction = RotateLeft; // Rotation left (180 -> 90)
         }
         else if (robotPosition.rot == -90) {
-          CurrentAction = RotateLeft; // Obrót o 180°
+          CurrentAction = RotateLeft; // Rotation by 180
         }
       }
-      else if (x_dist < 0) { // Potrzebny ruch w lewo (X-)
+      else if (x_dist < 0) { // Left direction movement needed  (X-)
         if (robotPosition.rot == 0) {
-          CurrentAction = RotateLeft; // Obrót w lewo (0° -> -90°)
+          CurrentAction = RotateLeft; // Rotation left (0 -> -90)
         }
         else if (robotPosition.rot == 180) {
-          CurrentAction = RotateRight; // Obrót w prawo (180° -> -90°)
+          CurrentAction = RotateRight; //  Rotation right(180 -> -90)
         }
         else if (robotPosition.rot == 90) {
-          CurrentAction = RotateLeft; // Obrót o 180°
+          CurrentAction = RotateLeft; // Rotation by 180
         }
       }
     } 
