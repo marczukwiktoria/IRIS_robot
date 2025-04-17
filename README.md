@@ -10,4 +10,6 @@
 
 0 1 2 3 4  - front sensors
 4 3 2 1 0 - back sensors
+
 gripper 0 - w gore
+gripper 1 - w dół

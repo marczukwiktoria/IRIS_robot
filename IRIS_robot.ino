@@ -86,6 +86,7 @@ bool keepLineOn = false; //flag for detecting crossing
 unsigned int previousCrossingTimestamp = millis(); // Timer for detecting crossing in case of crossing the crossing not straight 
 int cansCount = 0; // Cans count in our gripper
 int stepsDone = 0; // Steps count for reversing
+bool gripperMoving = true;
 
 // Motor action settings
 enum RobotAction {Straighten=0, RotateLeft=-90, RotateRight=90, Retreat =-1};
@@ -210,7 +211,7 @@ void moveStraight(int dist, int dir = 0){
 
       //Below is intersection detection
       unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
-      if ((readSensor(rightLineSensorPins[2]) || readSensor(leftLineSensorPins[2])) && keepLineOn == false ) {
+      if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false ) {
         keepLineOn = true;
         previousCrossingTimestamp = millis();
         if (robotPosition.rot == 0){
@@ -225,11 +226,12 @@ void moveStraight(int dist, int dir = 0){
         stepsDone=0;
         int one = 1;
         xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-      } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=1200) {
+      } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=800) { // I hcanged 1200 to 
         keepLineOn = false;
       }
     }
   } else {
+    vTaskDelay(5/portTICK_PERIOD_MS); // Without this it doesnt work :v
     digitalWrite(R_DIR, HIGH);
     digitalWrite(L_DIR, HIGH);
     for(int i = 0; i < stepCount; i++){
@@ -255,16 +257,18 @@ void moveStraight(int dist, int dir = 0){
           bothMotorStep(1);
           rightMotorStep(1);
         }
+      } else {
+        bothMotorStep(3);
       }
       //No logic for driving backwards, just go back
       unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
-      if ((readSensor(rightLineSensorPins[2]) || readSensor(leftLineSensorPins[2])) && keepLineOn == false ) {
+      if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false ) {
         previousCrossingTimestamp = millis();
         keepLineOn = true;
         stepsDone = 0;
         int one = 1;
         xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-      } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=800) {
+      } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=800) {
         keepLineOn = false;
       }
     }
@@ -294,11 +298,17 @@ void rotateBy(int angle, bool sensored = true) {
         while(!readSensor(C3)){
           bothMotorStep(1);
         }
+        digitalWrite(L_DIR, LOW);
+        digitalWrite(R_DIR, HIGH);
+        bothMotorStep(200);
         break;
       case 90:
         while(!readSensor(C9)){
           bothMotorStep(1);
         }
+        digitalWrite(L_DIR, HIGH);
+        digitalWrite(R_DIR, LOW);
+        bothMotorStep(200);
         break;
       case 180:
         while(!readSensor(C14)){
@@ -328,7 +338,8 @@ void rotateBy(int angle, bool sensored = true) {
   
   isRotating = false;
   stepsDone = 0;
-  int one = 1;
+  // calculatePath();
+  int one = 2;
   xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
   if (cansCount!= 0) {gripper(0);}
 }
@@ -337,44 +348,65 @@ void rotateBy(int angle, bool sensored = true) {
 void returnCans() {
   if (robotPosition.posX == 1 && robotPosition.rot == 180) {
     rotateBy(90);
-    moveStraight(120);
-    gripper(0);
-    moveStraight(80, 1);
+    bothMotorStep(2000);
+    digitalWrite(R_DIR, HIGH);
+    digitalWrite(L_DIR, HIGH);
+    delay(100);
+    bothMotorStep(2000);
+    digitalWrite(R_DIR, LOW);
+    digitalWrite(L_DIR, LOW);
+    cansCount = 0;
     rotateBy(90);
   } else if (robotPosition.posX == 3 && robotPosition.rot == 180) {
     rotateBy(-90);
-    moveStraight(120);
-    gripper(0);
-    moveStraight(80, 1);
+    bothMotorStep(2000);
+    digitalWrite(R_DIR, HIGH);
+    digitalWrite(L_DIR, HIGH);
+    delay(100);
+    bothMotorStep(2000);
+    digitalWrite(R_DIR, LOW);
+    digitalWrite(L_DIR, LOW);
+    cansCount = 0;
     rotateBy(-90);
   } else { //we got to the x=2, y=0
-    rotateBy(-90);
-    moveStraight(380);
-    moveStraight(120);
-    gripper(0);
-    moveStraight(120,1);
+    // rotateBy(-90);
+    bothMotorStep(2000);
+    digitalWrite(R_DIR, HIGH);
+    digitalWrite(L_DIR, HIGH);
+    bothMotorStep(2000);
+    digitalWrite(R_DIR, LOW);
+    digitalWrite(L_DIR, LOW);
+    cansCount = 0;
     rotateBy(-90);
   }
 
   goingToBase = false;
   puttingBackCans = false;
-  cansCount = 0;
   oponentDetected = false;
+  opponentAhead = false;
 }
 
 void OpponentDetection(void *pvParameters) {
   for (;;) {
     int frontSensorReading = readUltra2();
-    if (frontSensorReading>=2 && CurrentAction==Straighten) {
+    int frontSharpSensorReading = readSharp2();
+    if (frontSharpSensorReading >=2 && frontSensorReading>=2 && CurrentAction==Straighten && gripperMoving!=true &&
+        !(robotPosition.posX == 0 && robotPosition.rot == -90) &&
+        !(robotPosition.posX == 4 && robotPosition.rot == 90) &&
+        !(robotPosition.posY == 0 && robotPosition.rot == 180) &&
+        !(robotPosition.posY == 4 && robotPosition.rot == 0)
+    ) {
       opponentAhead=true;
       oponentDetected = true;
       if (stepsDone<=70) {
         //jestesmy na skrzyzowaniu
+        Serial.println("Nig");
         int one = 1;
         xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
       } else if (stepsDone>=211) { //211 is prime
         CurrentAction = Straighten;
       } else {
+        Serial.println("ger");
         CurrentAction = Retreat;
         if (cansCount>=1) {gripper(1);}
         bool canAtBoard = false;
@@ -400,11 +432,24 @@ void OpponentDetection(void *pvParameters) {
   }
 }
 
+bool temp = false;
 // Function to adjust motor speed based on line tracking sensors
 void FlagStep(void *pvParameters)
 {
   for (;;){
-    if (goingToBase==true && robotPosition.posY == 0 && puttingBackCans == false) {
+    if (CurrentAction == Retreat && temp == false) {
+      temp = true;
+      delay(100);
+      digitalWrite(R_DIR, HIGH);
+      digitalWrite(L_DIR, HIGH);
+      float aaa = (float)stepsDone / 282.735;
+      int32_t bbb = int32_t(aaa * 200 * MICROSTEP) / 12;
+      bothMotorStep(bbb);
+      digitalWrite(R_DIR, LOW);
+      digitalWrite(L_DIR, LOW);
+      temp = false;
+      // moveStraight(10, 1);
+    } else if (goingToBase==true && robotPosition.posY == 0 && (robotPosition.posX == 1 || robotPosition.posX == 3) && puttingBackCans == false) {
       puttingBackCans = true;
       returnCans();
     } else if (CurrentAction == Straighten && puttingBackCans == false) {
@@ -416,8 +461,6 @@ void FlagStep(void *pvParameters)
     } else if (CurrentAction == RotateLeft && isRotating == false && puttingBackCans == false) {
       isRotating=true;
       rotateBy(-90);
-    } else if (CurrentAction == Retreat) {
-      moveStraight(10, 1);
     }
   
     vTaskDelay(10/portTICK_PERIOD_MS);
@@ -428,7 +471,14 @@ void MakeMeasurements(void *pvParameters) {
   int valueFromQueue = 0;
   for (;;) {
     if (xQueueReceive(makeMeasurementsQueue,&valueFromQueue,portMAX_DELAY) == pdPASS ) {
-      if (valueFromQueue==1) {
+      if (valueFromQueue==1 || valueFromQueue==2) {
+        Serial.print("Robot position at making measurements ");
+        Serial.print(robotPosition.posX);
+        Serial.print(";");
+        Serial.print(robotPosition.posY);
+        Serial.print(";");
+        Serial.print(robotPosition.rot);
+        Serial.println(";");
         if (cantrix[robotPosition.posY][robotPosition.posX] == 1 && robotPosition.posY !=0) {
           Serial.println("we are at can position!");
           cantrix[robotPosition.posY][robotPosition.posX] = 0;
@@ -447,11 +497,13 @@ void MakeMeasurements(void *pvParameters) {
         int Sharp1 = readSharp1();
         int Sharp2 = readSharp2();
         int Sharp3 = readSharp3();
-        moveStraight(1);
+        moveStraight(2);
+        vTaskDelay(5/portTICK_PERIOD_MS);
         if (Sharp1<2) {Sharp1 = readSharp1();}
         if (Sharp2<2) {Sharp2 = readSharp2();}
         if (Sharp3<2) {Sharp3 = readSharp3();}
         moveStraight(2);
+        vTaskDelay(5/portTICK_PERIOD_MS);
         if (Sharp1<2) {Sharp1 = readSharp1();}
         if (Sharp2<2) {Sharp2 = readSharp2();}
         if (Sharp3<2) {Sharp3 = readSharp3();}
@@ -459,7 +511,8 @@ void MakeMeasurements(void *pvParameters) {
         int Ultra1 = readUltra1();
         int Ultra2 = readUltra2();
         int Ultra3 = readUltra3();
-        if (Ultra2>=2) {opponentAhead = true;oponentDetected=true;}
+        // vTaskDelay(50/portTICK_PERIOD_MS);
+        if (Ultra2>=2 && Sharp2>=2) {opponentAhead = true;oponentDetected=true;}
         //if ultra detects, it's enemy!
         Serial.print("ultras; ");
         Serial.print(Sharp1);
@@ -482,14 +535,16 @@ void MakeMeasurements(void *pvParameters) {
           !(robotPosition.posY == 4 && robotPosition.rot == 90) &&
           Ultra1 <= 1
         ) {
-          if (Sharp1 >= 2 && robotPosition.rot == 0) {
-            cantrix[robotPosition.posY][robotPosition.posX-1] = 1;
-          } else if (Sharp1 >= 2 && robotPosition.rot == 180) {
-            cantrix[robotPosition.posY][robotPosition.posX+1] = 1;
-          } else if (Sharp1 >= 2 && robotPosition.rot == 90) {
-            cantrix[robotPosition.posY+1][robotPosition.posX] = 1;
-          } else if (Sharp1 >= 2 && robotPosition.rot == -90) {
-            cantrix[robotPosition.posY-1][robotPosition.posX] = 1;
+          int shValueTemp = 0;
+          if (Sharp1>=2) {shValueTemp = 1;}
+          if (robotPosition.rot == 0) {
+            cantrix[robotPosition.posY][robotPosition.posX-1] = shValueTemp;
+          } else if (robotPosition.rot == 180) {
+            cantrix[robotPosition.posY][robotPosition.posX+1] = shValueTemp;
+          } else if (robotPosition.rot == 90) {
+            cantrix[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
+          } else if (robotPosition.rot == -90) {
+            cantrix[robotPosition.posY-1][robotPosition.posX] = shValueTemp;
           }
         } else if (Ultra1>=2) {
           if (robotPosition.rot == 0) {
@@ -518,14 +573,16 @@ void MakeMeasurements(void *pvParameters) {
           !(robotPosition.posY == 4 && robotPosition.rot == -90) &&
           Ultra3 <= 1
         ) {
-          if (Sharp3 >= 2 && robotPosition.rot == 0){
-            cantrix[robotPosition.posY][robotPosition.posX+1] = 1;
-          } else if (Sharp3 >= 2 && robotPosition.rot == 180){
-            cantrix[robotPosition.posY][robotPosition.posX-1] = 1;
-          } else if (Sharp3 >= 2 && robotPosition.rot == 90){
-            cantrix[robotPosition.posY-1][robotPosition.posX] = 1;
-          } else if (Sharp3 >= 2 && robotPosition.rot == -90){
-            cantrix[robotPosition.posY+1][robotPosition.posX] = 1;
+          int shValueTemp = 0;
+          if (Sharp3>=2) {shValueTemp = 1;}
+          if (robotPosition.rot == 0){
+            cantrix[robotPosition.posY][robotPosition.posX+1] = shValueTemp;
+          } else if (robotPosition.rot == 180){
+            cantrix[robotPosition.posY][robotPosition.posX-1] = shValueTemp;
+          } else if (robotPosition.rot == 90){
+            cantrix[robotPosition.posY-1][robotPosition.posX] = shValueTemp;
+          } else if (robotPosition.rot == -90){
+            cantrix[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
           }
         } else if (Ultra3>=2) {
           if (robotPosition.rot == 0) {
@@ -547,7 +604,7 @@ void MakeMeasurements(void *pvParameters) {
           }
         }
 
-        if (cansCount==0) {
+        if (cansCount==0 && valueFromQueue!=2) {
           if (
             !(robotPosition.posX == 0 && robotPosition.rot == -90) &&
             !(robotPosition.posX == 4 && robotPosition.rot == 90) &&
@@ -555,14 +612,16 @@ void MakeMeasurements(void *pvParameters) {
             !(robotPosition.posY == 4 && robotPosition.rot == 0) &&
             Ultra2 <= 1
           ) {
-            if (Sharp2 >= 2 && robotPosition.rot == 0){
-              cantrix[robotPosition.posY+1][robotPosition.posX] = 1;
-            } else if (Sharp2 >= 2 && robotPosition.rot == 180){
-              cantrix[robotPosition.posY-1][robotPosition.posX] = 1;
-            } else if (Sharp2 >= 2 && robotPosition.rot == 90){
-              cantrix[robotPosition.posY][robotPosition.posX+1] = 1;
-            } else if (Sharp2 >= 2 && robotPosition.rot == -90){
-              cantrix[robotPosition.posY][robotPosition.posX-1] = 1;
+            int shValueTemp = 0;
+            if (Sharp2>=2) {shValueTemp = 1;}
+            if (robotPosition.rot == 0){
+              cantrix[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
+            } else if (robotPosition.rot == 180){
+              cantrix[robotPosition.posY-1][robotPosition.posX] = shValueTemp;
+            } else if (robotPosition.rot == 90){
+              cantrix[robotPosition.posY][robotPosition.posX+1] = shValueTemp;
+            } else if (robotPosition.rot == -90){
+              cantrix[robotPosition.posY][robotPosition.posX-1] = shValueTemp;
             }
           } else if (Ultra2>=2) {
           if (robotPosition.rot == 0) {
@@ -704,10 +763,10 @@ void calculatePath() {
   // Go to base
   int previousGoingTobaseIteration = goingToBase;
   goingToBase = false;
-  if (cansCount>=2 || (canOnBoard == false && cansCount == 1)) {
+  if (cansCount>=1 || (canOnBoard == false && cansCount == 1)) {
     if (previousGoingTobaseIteration == true && cantrix[0][1] == 0 && cantrix[0][3] == 0) {
       // Enemy emptied our base can
-      if (robotPosition.posX>=2) {
+      if (robotPosition.posX>=2 && robotPosition.rot ==-90 ) {
         x_lowest = 1;
         distanceCost[0][1] = -1;
         cantrix[0][1] = 1;
@@ -902,6 +961,7 @@ void makeDecision(int x, int y) {
 
 // Setting gripper up and down
 void gripper(int direction) {
+  gripperMoving = true;
   if (direction == 0){
     for(int i = 0; i<200; i++){
       digitalWrite(SERWO_A, HIGH);
@@ -923,6 +983,7 @@ void gripper(int direction) {
       delayMicroseconds(18400);
     }
   }
+  gripperMoving=false;
 }
 
 
