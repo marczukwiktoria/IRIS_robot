@@ -41,7 +41,7 @@
 
 // Arrays storing pin numbers for line sensors
 // int frontLineSensorPins[] = {C4, C5, C6, C7, C8}; //Left to right 
-// int backLineSensorPins[] = {C16, C15, C14, C13, C12}; // Left to right
+// int backLineSensorPins[] = {C16, C15, C14, C13, C12}; // Left to right 
 int leftLineSensorPins[] = {C3, C2, C1};
 int rightLineSensorPins[] = {C9, C10, C11};
 
@@ -73,7 +73,8 @@ int readUltra3();
 void rightMotorStep(int steps);
 void leftMotorStep(int steps);
 void bothMotorStep(int steps);
-void moveStraight(int dist, int dir = 0);
+void moveStraight(int dist);
+void moveBack(int dist);
 void rotateBy(int angle, bool sensored = true);
 void returnCans();
 void calculatePath();
@@ -176,102 +177,102 @@ void bothMotorStep(int steps){
 }
 
 //Function used for straight movement
-void moveStraight(int dist, int dir = 0){
+void moveStraight(int dist){
   digitalWrite(R_DIR, LOW);
   digitalWrite(L_DIR, LOW);
   float wheelRotations = (float)dist / 282.735;
   int32_t stepCount = int32_t(wheelRotations * 200 * MICROSTEP) / 12;
-  if(dir == 0){
-    for(int i = 0; i < stepCount; i++){
-      if(readSensor(C5)){
-        for(int j = 0; j < 4; j++){
-          bothMotorStep(2);
-          rightMotorStep(1);
-        }
-      } else if(readSensor(C7)){
-        for(int j = 0; j < 4; j++){
-          bothMotorStep(2);
-          leftMotorStep(1);
-        }
-      } else if(readSensor(C6)){
-        bothMotorStep(12);
-      } else if(readSensor(C4)){
-        for(int j = 0; j < 6; j++){
-          bothMotorStep(1);
-          rightMotorStep(1);
-        }
-      } else if(readSensor(C8)){
-        for(int j = 0; j < 6; j++){
-          bothMotorStep(1);
-          leftMotorStep(1);
-        }
-      } else {
-        bothMotorStep(3);
+  for(int i = 0; i < stepCount; i++){
+    if(readSensor(C5)){
+      for(int j = 0; j < 4; j++){
+        bothMotorStep(2);
+        rightMotorStep(1);
       }
+    } else if(readSensor(C7)){
+      for(int j = 0; j < 4; j++){
+        bothMotorStep(2);
+        leftMotorStep(1);
+      }
+    } else if(readSensor(C6)){
+      bothMotorStep(12);
+    } else if(readSensor(C4)){
+      for(int j = 0; j < 6; j++){
+        bothMotorStep(1);
+        rightMotorStep(1);
+      }
+    } else if(readSensor(C8)){
+      for(int j = 0; j < 6; j++){
+        bothMotorStep(1);
+        leftMotorStep(1);
+      }
+    } else {
+      bothMotorStep(3);
+    }
 
-      //Below is intersection detection
-      unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
-      if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false ) {
-        keepLineOn = true;
-        previousCrossingTimestamp = millis();
-        if (robotPosition.rot == 0){
-          robotPosition.posY = robotPosition.posY + 1;
-        } else if (robotPosition.rot == 180) {
-          robotPosition.posY = robotPosition.posY - 1;
-        } else if (robotPosition.rot == 90) {
-          robotPosition.posX = robotPosition.posX + 1;
-        } else if (robotPosition.rot == -90) {
-          robotPosition.posX = robotPosition.posX - 1;
-        }
-        stepsDone=0;
-        int one = 1;
-        xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-      } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=800) { // I hcanged 1200 to 
-        keepLineOn = false;
+    //Below is intersection detection
+    unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
+    if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false ) {
+      keepLineOn = true;
+      previousCrossingTimestamp = millis();
+      if (robotPosition.rot == 0){
+        robotPosition.posY = robotPosition.posY + 1;
+      } else if (robotPosition.rot == 180) {
+        robotPosition.posY = robotPosition.posY - 1;
+      } else if (robotPosition.rot == 90) {
+        robotPosition.posX = robotPosition.posX + 1;
+      } else if (robotPosition.rot == -90) {
+        robotPosition.posX = robotPosition.posX - 1;
       }
+      stepsDone=0;
+      int one = 1;
+      xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
+    } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=800) { // I hcanged 1200 to 
+      keepLineOn = false;
     }
-  } else {
-    vTaskDelay(5/portTICK_PERIOD_MS); // Without this it doesnt work :v
-    digitalWrite(R_DIR, HIGH);
-    digitalWrite(L_DIR, HIGH);
-    for(int i = 0; i < stepCount; i++){
-      if(readSensor(C5)){
-        for(int j = 0; j < 4; j++){
-          bothMotorStep(2);
-          leftMotorStep(1);
-        }
-      } else if(readSensor(C7)){
-        for(int j = 0; j < 4; j++){
-          bothMotorStep(2);
-          rightMotorStep(1);
-        }
-      } else if(readSensor(C6)){
-        bothMotorStep(12);
-      } else if(readSensor(C4)){
-        for(int j = 0; j < 6; j++){
-          bothMotorStep(1);
-          leftMotorStep(1);
-        }
-      } else if(readSensor(C8)){
-        for(int j = 0; j < 6; j++){
-          bothMotorStep(1);
-          rightMotorStep(1);
-        }
-      } else {
-        bothMotorStep(3);
+  }
+}
+
+void moveBack(int dist) {
+  digitalWrite(R_DIR, HIGH);
+  digitalWrite(L_DIR, HIGH);
+  wheelRotations = (float)dist / 282.735;
+  stepCount = int32_t(wheelRotations * 200 * MICROSTEP) / 12;
+  for (int i = 0; i < stepCount; i++) {
+    if (readSensor(C13)) {
+      for (int j = 0; j < 4; j++) {
+        bothMotorStep(2);
+        leftMotorStep(1);
       }
-      //No logic for driving backwards, just go back
-      unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
-      if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false ) {
-        previousCrossingTimestamp = millis();
-        keepLineOn = true;
-        stepsDone = 0;
-        int one = 1;
-        xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-      } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=800) {
-        keepLineOn = false;
+    } else if (readSensor(C15)) {
+      for (int j = 0; j < 4; j++) {
+        bothMotorStep(2);
+        rightMotorStep(1);
       }
+    } else if (readSensor(C14)) {
+      bothMotorStep(12);
+    } else if (readSensor(C16)) {
+      for (int j = 0; j < 6; j++) {
+        bothMotorStep(1);
+        leftMotorStep(1);
+      }
+    } else if (readSensor(C12)) {
+      for (int j = 0; j < 6; j++) {
+        bothMotorStep(1);
+        rightMotorStep(1);
+      }
+    } else {
+      bothMotorStep(3);
     }
+    unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
+    if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false ) {
+      previousCrossingTimestamp = millis();
+      keepLineOn = true;
+      stepsDone = 0;
+      int one = 1;
+      xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
+    } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=800) {
+      keepLineOn = false;
+    }   
   }
 }
 
@@ -348,34 +349,53 @@ void rotateBy(int angle, bool sensored = true) {
 void returnCans() {
   if (robotPosition.posX == 1 && robotPosition.rot == 180) {
     rotateBy(90);
-    bothMotorStep(2000);
-    digitalWrite(R_DIR, HIGH);
-    digitalWrite(L_DIR, HIGH);
-    delay(100);
-    bothMotorStep(2000);
+
     digitalWrite(R_DIR, LOW);
     digitalWrite(L_DIR, LOW);
+    for(int i = 0; i<30; i++){
+      moveStraight(10);
+    }
+    delay(200);
+    digitalWrite(R_DIR, HIGH);
+    digitalWrite(L_DIR, HIGH);
+    for(int i = 0; i<30; i++){
+      moveBack(10);
+    }
+
+
     cansCount = 0;
     rotateBy(90);
   } else if (robotPosition.posX == 3 && robotPosition.rot == 180) {
     rotateBy(-90);
-    bothMotorStep(2000);
-    digitalWrite(R_DIR, HIGH);
-    digitalWrite(L_DIR, HIGH);
-    delay(100);
-    bothMotorStep(2000);
+
     digitalWrite(R_DIR, LOW);
     digitalWrite(L_DIR, LOW);
+    for(int i = 0; i<30; i++){
+      moveStraight(10);
+    }
+    delay(200);
+    digitalWrite(R_DIR, HIGH);
+    digitalWrite(L_DIR, HIGH);
+    for(int i = 0; i<30; i++){
+      moveBack(10);
+    }
+
     cansCount = 0;
     rotateBy(-90);
   } else { //we got to the x=2, y=0
     // rotateBy(-90);
-    bothMotorStep(2000);
-    digitalWrite(R_DIR, HIGH);
-    digitalWrite(L_DIR, HIGH);
-    bothMotorStep(2000);
     digitalWrite(R_DIR, LOW);
     digitalWrite(L_DIR, LOW);
+    for(int i = 0; i<30; i++){
+      moveStraight(10);
+    }
+    delay(200);
+    digitalWrite(R_DIR, HIGH);
+    digitalWrite(L_DIR, HIGH);
+    for(int i = 0; i<30; i++){
+      moveBack(10);
+    }
+
     cansCount = 0;
     rotateBy(-90);
   }
@@ -397,7 +417,7 @@ void OpponentDetection(void *pvParameters) {
         !(robotPosition.posY == 4 && robotPosition.rot == 0)
     ) {
       opponentAhead=true;
-      oponentDetected = true;
+      oponentDetected = true; 
       if (stepsDone<=70) {
         //jestesmy na skrzyzowaniu
         Serial.println("Nig");
@@ -432,23 +452,15 @@ void OpponentDetection(void *pvParameters) {
   }
 }
 
-bool temp = false;
+// bool temp = false;
 // Function to adjust motor speed based on line tracking sensors
 void FlagStep(void *pvParameters)
 {
   for (;;){
-    if (CurrentAction == Retreat && temp == false) {
-      temp = true;
-      delay(100);
-      digitalWrite(R_DIR, HIGH);
-      digitalWrite(L_DIR, HIGH);
-      float aaa = (float)stepsDone / 282.735;
-      int32_t bbb = int32_t(aaa * 200 * MICROSTEP) / 12;
-      bothMotorStep(bbb);
-      digitalWrite(R_DIR, LOW);
-      digitalWrite(L_DIR, LOW);
-      temp = false;
-      // moveStraight(10, 1);
+    if (CurrentAction == Retreat) {
+      //temp = true;
+      moveBack(10);
+      //temp = false;
     } else if (goingToBase==true && robotPosition.posY == 0 && (robotPosition.posX == 1 || robotPosition.posX == 3) && puttingBackCans == false) {
       puttingBackCans = true;
       returnCans();
@@ -1010,10 +1022,10 @@ void setup() {
     MakeMeasurements, "MakeMeasurements", 512, NULL, 1, NULL);
 
   xTaskCreate( // Function to adjust motor speed based on line tracking sensors
-    DisplayToSerial, "DisplayToSerial", 256, NULL, 1, NULL);
+    DisplayToSerial, "DisplayToSerial", 512, NULL, 1, NULL);
 
   xTaskCreate( // Function to adjust motor speed based on line tracking sensors
-    OpponentDetection, "OpponentDetection", 256, NULL, 1, NULL);
+    OpponentDetection, "OpponentDetection", 512, NULL, 1, NULL);
 }
 
 void DisplayToSerial(void *pvParameters) {
