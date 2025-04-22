@@ -110,7 +110,6 @@ int n = 3;
 int n_coeff = 1;
 bool change_n = false;
 bool opponentAhead = false;
-bool oponentDetected = false;
 int rectanglePoints[4][2] = {{1,4},{1,1},{3,1},{3,4}};
 // int rectanglePoints[4][2] = {{1,2},{1,1},{3,1},{3,2}};
 int cantrix[5][5] = {{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0}};
@@ -227,7 +226,7 @@ void moveStraight(int dist){
       stepsDone=0;
       int one = 1;
       xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-    } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=1200) { // I hcanged 1200 to 
+    } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=1200) { // I changed 1200 to 
       keepLineOn = false;
     }
   }
@@ -265,14 +264,14 @@ void moveBack(int dist) {
       bothMotorStep(3);
     }
     unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
-    if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false ) {
+    if ((readSensor(rightLineSensorPins[2]) || readSensor(leftLineSensorPins[2])) && keepLineOn == false && puttingBackCans == true) {
       previousCrossingTimestamp = millis();
       keepLineOn = true;
       stepsDone = 0;
       CurrentAction = Straighten;
       int one = 1;
       xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-    } else if ((readSensor(rightLineSensorPins[2]) || readSensor(leftLineSensorPins[2])) && keepLineOn == false && puttingBackCans == true) {
+    } else if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false) {
       previousCrossingTimestamp = millis();
       keepLineOn = true;
       stepsDone = 0;
@@ -308,17 +307,11 @@ void rotateBy(int angle, bool sensored = true) {
         while(!readSensor(C3)){
           bothMotorStep(1);
         }
-        // digitalWrite(L_DIR, LOW);
-        // digitalWrite(R_DIR, HIGH);
-        // bothMotorStep(200);
         break;
       case 90:
         while(!readSensor(C9)){
           bothMotorStep(1);
         }
-        // digitalWrite(L_DIR, HIGH);
-        // digitalWrite(R_DIR, LOW);
-        // bothMotorStep(200);
         break;
       case 180:
         while(!readSensor(C14)){
@@ -349,7 +342,7 @@ void rotateBy(int angle, bool sensored = true) {
   
   isRotating = false;
   stepsDone = 0;
-  // calculatePath();
+  
   int one = 2;
   xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
   if (cansCount!= 0) {gripper(0);}
@@ -393,7 +386,6 @@ void returnCans() {
     cansCount = 0;
     rotateBy(-90);
   } else { //we got to the x=2, y=0 //this case should be handled by makeDecision function, therefore it should never executete
-    // rotateBy(-90);
     digitalWrite(R_DIR, LOW);
     digitalWrite(L_DIR, LOW);
     for(int i = 0; i<returnCansStepCount; i++){
@@ -414,7 +406,6 @@ void returnCans() {
   n_coeff = 1;
   goingToBase = false;
   puttingBackCans = false;
-  oponentDetected = false;
   opponentAhead = false;
 }
 
@@ -422,24 +413,17 @@ void OpponentDetection(void *pvParameters) {
   for (;;) {
     int frontSensorReading = readUltra2();
     int frontSharpSensorReading = readSharp2();
-    // Serial.print("OpponentDetectin;");
-    // Serial.print(CurrentAction==Straighten);
-    // Serial.print(";");
-    // Serial.print(gripperMoving!=true);
-    // Serial.println(";");
-    if (frontSharpSensorReading >=2 && frontSensorReading>=2 && CurrentAction==Straighten && gripperMoving!=true && puttingBackCans == false &&
+    if (frontSharpSensorReading >=2 && frontSensorReading>=2 && CurrentAction==Straighten && gripperMoving!=true && puttingBackCans == false && opponentAhead == false &&
         !(robotPosition.posX == 0 && robotPosition.rot == -90) &&
         !(robotPosition.posX == 4 && robotPosition.rot == 90) &&
         !(robotPosition.posY == 0 && robotPosition.rot == 180) &&
         !(robotPosition.posY == 4 && robotPosition.rot == 0)
     ) {
       opponentAhead=true;
-      oponentDetected = true; 
-      if (stepsDone<=200) {
+      if (stepsDone>=30 && stepsDone<=200) {
         waitForGoingBack = true;
         Serial.print("Weszlismy w 1 ");
         Serial.println(stepsDone);
-        //jestesmy na skrzyzowaniu
         CurrentAction = Retreat;
         if (cansCount>=1) {gripper(1);}
         bool canAtBoard = false;
@@ -459,9 +443,7 @@ void OpponentDetection(void *pvParameters) {
           change_n = true;
         }
         keepLineOn=false;
-      } else { //211 is prime
-        // Serial.print("Weszlismy w 2 ");
-        // Serial.println(stepsDone);
+      } else { // just go to the end
         CurrentAction = Straighten;
       }        
     }
@@ -469,7 +451,7 @@ void OpponentDetection(void *pvParameters) {
   }
 }
 
-// bool temp = false;
+
 // Function to adjust motor speed based on line tracking sensors
 void FlagStep(void *pvParameters)
 {
@@ -478,12 +460,7 @@ void FlagStep(void *pvParameters)
       waitForGoingBack=false;
       delay(300);
     } else if (CurrentAction == Retreat) {
-      //temp = true;
       moveBack(10);
-      // int one = 1;
-      // xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-      // continue; //10 ms delay can cause robot jumping
-      //temp = false;
     } else if (goingToBase==true && robotPosition.posY == 0 && (robotPosition.posX == 1 || robotPosition.posX == 3) && puttingBackCans == false) {
       puttingBackCans = true;
       returnCans();
@@ -552,8 +529,7 @@ void MakeMeasurements(void *pvParameters) {
         int Ultra1 = readUltra1();
         int Ultra2 = readUltra2();
         int Ultra3 = readUltra3();
-        // vTaskDelay(50/portTICK_PERIOD_MS);
-        if (Ultra2>=2 && Sharp2>=2) {opponentAhead = true;oponentDetected=true;}
+        if (Ultra2>=2 && Sharp2>=2) {opponentAhead = true;}
         //if ultra detects, it's enemy!
         Serial.print("ultras; ");
         Serial.print(Sharp1);
@@ -1067,7 +1043,6 @@ void MeasureFrontSharpCycle(void *pvParameters) {
         cantrix[robotPosition.posY][robotPosition.posX-1] = shValueTemp;
         distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
       }
-      // calculatePath();
     }
     vTaskDelay(100/portTICK_PERIOD_MS);
   }
