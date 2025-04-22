@@ -88,6 +88,7 @@ unsigned int previousCrossingTimestamp = millis(); // Timer for detecting crossi
 int cansCount = 0; // Cans count in our gripper
 int stepsDone = 0; // Steps count for reversing
 bool gripperMoving = false;
+bool waitForGoingBack = false; 
 
 // Motor action settings
 enum RobotAction {Straighten=0, RotateLeft=-90, RotateRight=90, Retreat =-1};
@@ -223,8 +224,6 @@ void moveStraight(int dist){
       } else if (robotPosition.rot == -90) {
         robotPosition.posX = robotPosition.posX - 1;
       }
-      Serial.print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-      Serial.print(stepsDone);
       stepsDone=0;
       int one = 1;
       xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
@@ -266,14 +265,14 @@ void moveBack(int dist) {
       bothMotorStep(3);
     }
     unsigned int tempTime = abs(millis() - previousCrossingTimestamp);
-    if ((readSensor(rightLineSensorPins[2]) || readSensor(leftLineSensorPins[2])) && keepLineOn == false ) {
+    if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false ) {
       previousCrossingTimestamp = millis();
       keepLineOn = true;
       stepsDone = 0;
       CurrentAction = Straighten;
       int one = 1;
       xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-    } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=1200) {
+    } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=1200) {
       keepLineOn = false;
     }   
   }
@@ -427,14 +426,13 @@ void OpponentDetection(void *pvParameters) {
         !(robotPosition.posY == 0 && robotPosition.rot == 180) &&
         !(robotPosition.posY == 4 && robotPosition.rot == 0)
     ) {
+      waitForGoingBack = true;
       opponentAhead=true;
       oponentDetected = true; 
       if (stepsDone<=250) {
-        // Serial.print("Weszlismy w 1 ");
-        // Serial.println(stepsDone);
+        Serial.print("Weszlismy w 1 ");
+        Serial.println(stepsDone);
         //jestesmy na skrzyzowaniu
-        // int one = 1;
-        // xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
         CurrentAction = Retreat;
         if (cansCount>=1) {gripper(1);}
         bool canAtBoard = false;
@@ -454,15 +452,11 @@ void OpponentDetection(void *pvParameters) {
           change_n = true;
         }
         keepLineOn=false;
-
       } else { //211 is prime
         // Serial.print("Weszlismy w 2 ");
         // Serial.println(stepsDone);
         CurrentAction = Straighten;
-      } //else {
-        // Serial.print("Weszlismy w 3 ");
-        // Serial.println(stepsDone);
-        
+      }        
     }
     vTaskDelay(200/portTICK_PERIOD_MS);
   }
@@ -473,15 +467,12 @@ void OpponentDetection(void *pvParameters) {
 void FlagStep(void *pvParameters)
 {
   for (;;){
-    if (CurrentAction == RotateRight && isRotating==false && puttingBackCans==false) {
-      isRotating=true;
-      rotateBy(90);
-    } else if (CurrentAction == RotateLeft && isRotating == false && puttingBackCans == false) {
-      isRotating=true;
-      rotateBy(-90);
+    if (waitForGoingBack == true) {
+      waitForGoingBack=false;
+      delay(300);
     } else if (CurrentAction == Retreat) {
       //temp = true;
-      moveBack(1000000);
+      moveBack(10);
       // int one = 1;
       // xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
       // continue; //10 ms delay can cause robot jumping
@@ -492,6 +483,12 @@ void FlagStep(void *pvParameters)
     } else if (CurrentAction == Straighten && puttingBackCans == false) {
       moveStraight(10);
       stepsDone+=10;
+    } else if (CurrentAction == RotateRight && isRotating==false && puttingBackCans==false) {
+      isRotating=true;
+      rotateBy(90);
+    } else if (CurrentAction == RotateLeft && isRotating == false && puttingBackCans == false) {
+      isRotating=true;
+      rotateBy(-90);
     }
   
     vTaskDelay(10/portTICK_PERIOD_MS);
@@ -1040,7 +1037,7 @@ void gripper(int direction) {
 void MeasureFrontSharpCycle(void *pvParameters) {
   for (;;) {
     int ultraMeasure = readUltra2();
-    if (CurrentAction==Straighten && ultraMeasure <=1 && cansCount==0 && stepsDone <=111 && puttingBackCans == false &&
+    if (CurrentAction==Straighten && ultraMeasure <=1 && cansCount==0 && stepsDone <=130 && puttingBackCans == false &&
       !(robotPosition.posX == 0 && robotPosition.rot == -90) &&
       !(robotPosition.posX == 4 && robotPosition.rot == 90) &&
       !(robotPosition.posY == 0 && robotPosition.rot == 180) &&
@@ -1052,6 +1049,7 @@ void MeasureFrontSharpCycle(void *pvParameters) {
       if (robotPosition.rot == 0){
         cantrix[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
         distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
+        // Serial.print("i wrote somethign");
       } else if (robotPosition.rot == 180){
         cantrix[robotPosition.posY-1][robotPosition.posX] = shValueTemp;
         distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
@@ -1063,9 +1061,8 @@ void MeasureFrontSharpCycle(void *pvParameters) {
         distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
       }
       // calculatePath();
-      
     }
-    vTaskDelay(150/portTICK_PERIOD_MS);
+    vTaskDelay(0/portTICK_PERIOD_MS);
   }
 }
 
@@ -1114,16 +1111,16 @@ void DisplayToSerial(void *pvParameters) {
     Serial.print(";");
     Serial.print(robotPosition.rot);
     Serial.print(";");
-    Serial.print(stepsDone);
+    Serial.print(n);
     Serial.print(";");
     Serial.print(n_coeff);
     Serial.print(";");
-    // Serial.print(readSharp1());
-    // Serial.print(";");  
+    Serial.print(readSharp1());
+    Serial.print(";");  
     // Serial.print(readSharp2());
     // Serial.print(";");  
-    // Serial.print(readSharp3());
-    // Serial.print(";");
+    Serial.print(readSharp3());
+    Serial.print(";");
     // Serial.print(readUltra1());
     // Serial.print(";");  
     // Serial.print(readUltra2());
