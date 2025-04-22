@@ -87,7 +87,7 @@ bool keepLineOn = false; //flag for detecting crossing
 unsigned int previousCrossingTimestamp = millis(); // Timer for detecting crossing in case of crossing the crossing not straight 
 int cansCount = 0; // Cans count in our gripper
 int stepsDone = 0; // Steps count for reversing
-bool gripperMoving = true;
+bool gripperMoving = false;
 
 // Motor action settings
 enum RobotAction {Straighten=0, RotateLeft=-90, RotateRight=90, Retreat =-1};
@@ -268,6 +268,7 @@ void moveBack(int dist) {
       previousCrossingTimestamp = millis();
       keepLineOn = true;
       stepsDone = 0;
+      CurrentAction = Straighten;
       int one = 1;
       xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
     } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=1200) {
@@ -364,7 +365,6 @@ void returnCans() {
       moveBack(10);
     }
 
-
     cansCount = 0;
     rotateBy(90);
   } else if (robotPosition.posX == 3 && robotPosition.rot == 180) {
@@ -384,7 +384,7 @@ void returnCans() {
 
     cansCount = 0;
     rotateBy(-90);
-  } else { //we got to the x=2, y=0
+  } else { //we got to the x=2, y=0 //this case should be handled by makeDecision function, therefore it should never executete
     // rotateBy(-90);
     digitalWrite(R_DIR, LOW);
     digitalWrite(L_DIR, LOW);
@@ -402,6 +402,8 @@ void returnCans() {
     rotateBy(-90);
   }
 
+  n=3; // idk
+  n_coeff = 1;
   goingToBase = false;
   puttingBackCans = false;
   oponentDetected = false;
@@ -412,6 +414,11 @@ void OpponentDetection(void *pvParameters) {
   for (;;) {
     int frontSensorReading = readUltra2();
     int frontSharpSensorReading = readSharp2();
+    // Serial.print("OpponentDetectin;");
+    // Serial.print(CurrentAction==Straighten);
+    // Serial.print(";");
+    // Serial.print(gripperMoving!=true);
+    // Serial.println(";");
     if (frontSharpSensorReading >=2 && frontSensorReading>=2 && CurrentAction==Straighten && gripperMoving!=true &&
         !(robotPosition.posX == 0 && robotPosition.rot == -90) &&
         !(robotPosition.posX == 4 && robotPosition.rot == 90) &&
@@ -421,17 +428,23 @@ void OpponentDetection(void *pvParameters) {
       opponentAhead=true;
       oponentDetected = true; 
       if (stepsDone<=70) {
+        Serial.print("Weszlismy w 1 ");
+        Serial.println(stepsDone);
         //jestesmy na skrzyzowaniu
         int one = 1;
         xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-      } else if (stepsDone>=211) { //211 is prime
+      } else if (stepsDone>=501) { //211 is prime
+        Serial.print("Weszlismy w 2 ");
+        Serial.println(stepsDone);
         CurrentAction = Straighten;
       } else {
+        Serial.print("Weszlismy w 3 ");
+        Serial.println(stepsDone);
         CurrentAction = Retreat;
         if (cansCount>=1) {gripper(1);}
         bool canAtBoard = false;
         for (int i = 0;i<5;i++) {
-          for (int j = 0;j<5;j++) {
+          for (int j = 0;j<5;j++) { 
             if (cantrix[i][j] == 1) {
               canAtBoard = true;
               break;
@@ -459,10 +472,10 @@ void FlagStep(void *pvParameters)
   for (;;){
     if (CurrentAction == Retreat) {
       //temp = true;
-      moveBack(stepsDone);
-      int one = 1;
-      xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-      continue; //10 ms delay can cause robot jumping
+      moveBack(10);
+      // int one = 1;
+      // xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
+      // continue; //10 ms delay can cause robot jumping
       //temp = false;
     } else if (goingToBase==true && robotPosition.posY == 0 && (robotPosition.posX == 1 || robotPosition.posX == 3) && puttingBackCans == false) {
       puttingBackCans = true;
@@ -513,7 +526,7 @@ void MakeMeasurements(void *pvParameters) {
         // Basically we just started detecting the object
         // This 100 ms delay is unfortunatelly on last left and right sensor, so we can't delay it based on mechanical structure
         // The 100 ms delay allows to measure the object after some time so basically we moved a little bit to the front
-        // vTaskDelay(50/portTICK_PERIOD_MS); 
+        // vTaskDelay(50/portTICK_PERIOD_MS);  NVMM
         Serial.println("making measurements");
         int Sharp1 = readSharp1();
         int Sharp2 = readSharp2();
@@ -832,6 +845,8 @@ void makeDecision(int x, int y) {
   if (opponentAhead==false) {
 
     if (y == 0 && (x==1 || x==3) && x_dist !=0 ) { //&& robotPosition.posX!=2 case for god knows what
+      
+      //remainingCrossings = 0; is set in all bc we reutrn cans or something?
       if (robotPosition.posX==0) {
         if (robotPosition.rot == 0) {
           CurrentAction = RotateRight; // Rotation by 180
@@ -839,7 +854,7 @@ void makeDecision(int x, int y) {
           CurrentAction = RotateLeft;
         } else if (robotPosition.rot == 90) {
           CurrentAction = Straighten;
-          // remainingCrossings = 0;
+          remainingCrossings = 0;
         } else if (robotPosition.rot == -90) { 
           CurrentAction = RotateLeft;
         }
@@ -850,9 +865,20 @@ void makeDecision(int x, int y) {
           CurrentAction = RotateRight;
         } else if (robotPosition.rot == -90) {
           CurrentAction = Straighten;
-          // remainingCrossings = 0;
+          remainingCrossings = 0;
         } else if (robotPosition.rot == 90) { 
           CurrentAction = RotateRight;
+        }
+      } else if (robotPosition.posX==2) {
+        if (robotPosition.rot == 0) {
+          CurrentAction = RotateRight; 
+        } else if (robotPosition.rot == 180) {
+          CurrentAction = RotateLeft;
+        } else if (robotPosition.rot == -90) {
+          CurrentAction = RotateRight; //Rotation by 180
+        } else if (robotPosition.rot == 90) { 
+          CurrentAction = Straighten;
+          remainingCrossings = 0;
         }
       }
       return;
@@ -1011,18 +1037,19 @@ void gripper(int direction) {
 void MeasureFrontSharpCycle(void *pvParameters) {
   for (;;) {
     int ultraMeasure = readUltra2();
-    if (CurrentAction==Straighten && ultraMeasure <=1 && cansCount==0 &&
+    if (CurrentAction==Straighten && ultraMeasure <=1 && cansCount==0 && stepsDone <=130 && 
       !(robotPosition.posX == 0 && robotPosition.rot == -90) &&
       !(robotPosition.posX == 4 && robotPosition.rot == 90) &&
       !(robotPosition.posY == 0 && robotPosition.rot == 180) &&
       !(robotPosition.posY == 4 && robotPosition.rot == 0)
-      ) {
+    ) {
       int sharpMeasure = readSharp2();
       int shValueTemp = 0;
       if (sharpMeasure>=2) {shValueTemp = 1;}
       if (robotPosition.rot == 0){
         cantrix[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
         distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
+        Serial.print("i wrote somethign");
       } else if (robotPosition.rot == 180){
         cantrix[robotPosition.posY-1][robotPosition.posX] = shValueTemp;
         distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
@@ -1109,7 +1136,7 @@ void DisplayToSerial(void *pvParameters) {
     //   }
     //   Serial.println(";");
     // }
-    vTaskDelay(100/portTICK_PERIOD_MS);
+    vTaskDelay(1000/portTICK_PERIOD_MS);
   }
 }
 
