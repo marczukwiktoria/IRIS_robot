@@ -272,6 +272,13 @@ void moveBack(int dist) {
       CurrentAction = Straighten;
       int one = 1;
       xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
+    } else if ((readSensor(rightLineSensorPins[2]) || readSensor(leftLineSensorPins[2])) && keepLineOn == false && puttingBackCans == true) {
+      previousCrossingTimestamp = millis();
+      keepLineOn = true;
+      stepsDone = 0;
+      CurrentAction = Straighten;
+      int one = 1;
+      xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
     } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=1200) {
       keepLineOn = false;
     }   
@@ -426,10 +433,10 @@ void OpponentDetection(void *pvParameters) {
         !(robotPosition.posY == 0 && robotPosition.rot == 180) &&
         !(robotPosition.posY == 4 && robotPosition.rot == 0)
     ) {
-      waitForGoingBack = true;
       opponentAhead=true;
       oponentDetected = true; 
-      if (stepsDone<=250) {
+      if (stepsDone<=200) {
+        waitForGoingBack = true;
         Serial.print("Weszlismy w 1 ");
         Serial.println(stepsDone);
         //jestesmy na skrzyzowaniu
@@ -1037,7 +1044,7 @@ void gripper(int direction) {
 void MeasureFrontSharpCycle(void *pvParameters) {
   for (;;) {
     int ultraMeasure = readUltra2();
-    if (CurrentAction==Straighten && ultraMeasure <=1 && cansCount==0 && stepsDone <=130 && puttingBackCans == false &&
+    if (CurrentAction==Straighten && ultraMeasure <=1 && cansCount==0 && stepsDone >= 60 && stepsDone <=180 && puttingBackCans == false &&
       !(robotPosition.posX == 0 && robotPosition.rot == -90) &&
       !(robotPosition.posX == 4 && robotPosition.rot == 90) &&
       !(robotPosition.posY == 0 && robotPosition.rot == 180) &&
@@ -1062,7 +1069,7 @@ void MeasureFrontSharpCycle(void *pvParameters) {
       }
       // calculatePath();
     }
-    vTaskDelay(0/portTICK_PERIOD_MS);
+    vTaskDelay(100/portTICK_PERIOD_MS);
   }
 }
 
