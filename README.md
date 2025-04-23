@@ -13,3 +13,6 @@
 
 gripper 0 - w gore
 gripper 1 - w dół
+
+
+biały = false

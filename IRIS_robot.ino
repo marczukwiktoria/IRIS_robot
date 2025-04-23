@@ -40,8 +40,8 @@
 
 
 // Arrays storing pin numbers for line sensors
-// int frontLineSensorPins[] = {C4, C5, C6, C7, C8}; //Left to right 
-// int backLineSensorPins[] = {C16, C15, C14, C13, C12}; // Left to right 
+int frontLineSensorPins[] = {C4, C5, C6, C7, C8}; //Left to right 
+int backLineSensorPins[] = {C16, C15, C14, C13, C12}; // Left to right 
 int leftLineSensorPins[] = {C3, C2, C1};
 int rightLineSensorPins[] = {C9, C10, C11};
 
@@ -307,11 +307,32 @@ void rotateBy(int angle, bool sensored = true) {
         while(!readSensor(C3)){
           bothMotorStep(1);
         }
+        if (readSensor(frontLineSensorPins[0])==0 && 
+            readSensor(frontLineSensorPins[1])==0 && 
+            readSensor(frontLineSensorPins[2])==0 &&
+            readSensor(frontLineSensorPins[3])==0 && 
+            readSensor(frontLineSensorPins[4])==0) {
+            bothMotorStep(200);
+          }
+          // digitalWrite(L_DIR, LOW);
+          // digitalWrite(R_DIR, HIGH);
+          // bothMotorStep(200);
+        // }
         break;
       case 90:
         while(!readSensor(C9)){
           bothMotorStep(1);
         }
+        if (readSensor(frontLineSensorPins[0])==0 && 
+            readSensor(frontLineSensorPins[1])==0 && 
+            readSensor(frontLineSensorPins[2])==0 &&
+            readSensor(frontLineSensorPins[3])==0 && 
+            readSensor(frontLineSensorPins[4])==0) {
+              bothMotorStep(200);
+        }
+          // digitalWrite(L_DIR, HIGH);
+          // digitalWrite(R_DIR, LOW);
+          // bothMotorStep(200);
         break;
       case 180:
         while(!readSensor(C14)){
@@ -420,7 +441,7 @@ void OpponentDetection(void *pvParameters) {
         !(robotPosition.posY == 4 && robotPosition.rot == 0)
     ) {
       opponentAhead=true;
-      if (stepsDone>=30 && stepsDone<=200) {
+      if (stepsDone>=30 && stepsDone<=180) {
         waitForGoingBack = true;
         Serial.print("Weszlismy w 1 ");
         Serial.println(stepsDone);
@@ -621,14 +642,14 @@ void MakeMeasurements(void *pvParameters) {
           }
         }
 
-        if (cansCount==0 && valueFromQueue!=2) {
-          if (
-            !(robotPosition.posX == 0 && robotPosition.rot == -90) &&
-            !(robotPosition.posX == 4 && robotPosition.rot == 90) &&
-            !(robotPosition.posY <= 1 && robotPosition.rot == 180) &&
-            !(robotPosition.posY == 4 && robotPosition.rot == 0) &&
-            Ultra2 <= 1
-          ) {
+        if (
+          !(robotPosition.posX == 0 && robotPosition.rot == -90) &&
+          !(robotPosition.posX == 4 && robotPosition.rot == 90) &&
+          !(robotPosition.posY <= 1 && robotPosition.rot == 180) &&
+          !(robotPosition.posY == 4 && robotPosition.rot == 0) &&
+          Ultra2 <= 1
+        ) {
+          if (cansCount==0 && valueFromQueue!=2) {
             int shValueTemp = 0;
             if (Sharp2>=2) {shValueTemp = 1;}
             if (robotPosition.rot == 0){
@@ -640,7 +661,8 @@ void MakeMeasurements(void *pvParameters) {
             } else if (robotPosition.rot == -90){
               cantrix[robotPosition.posY][robotPosition.posX-1] = shValueTemp;
             }
-          } else if (Ultra2>=2) {
+          }
+        } else if (Ultra2>=2) {
           if (robotPosition.rot == 0) {
             for (int i = robotPosition.posX;i<5;i++) {
               cantrix[i][robotPosition.posX] = 0;
@@ -658,7 +680,6 @@ void MakeMeasurements(void *pvParameters) {
               cantrix[robotPosition.posY][i] = 0;
             }
           }
-        }
         }
         calculatePath();
       }
@@ -781,6 +802,14 @@ void calculatePath() {
   int previousGoingTobaseIteration = goingToBase;
   goingToBase = false;
   if (cansCount>=1 || (canOnBoard == false && cansCount == 1)) {
+    Serial.println("POWROT");
+    Serial.print(previousGoingTobaseIteration);
+    Serial.print(";");
+    Serial.print(cantrix[0][1]);
+     Serial.print(";");
+    Serial.print(cantrix[0][3]);
+    Serial.println(";");
+
     if (previousGoingTobaseIteration == true && cantrix[0][1] == 0 && cantrix[0][3] == 0) {
       // Enemy emptied our base can
       if (robotPosition.posX>=2 && robotPosition.rot ==-90 ) {
@@ -792,7 +821,15 @@ void calculatePath() {
         distanceCost[0][3] = -1;
         cantrix[0][3] = 1;
       }
-    } else {
+    } else if (previousGoingTobaseIteration == true && (cantrix[0][1] == 1 || cantrix[0][3] == 1)) {
+      // rewrite the values
+      if (cantrix[0][1] == 1) {
+        x_lowest = 1;
+      } else if (cantrix[0][3] == 1){
+        x_lowest = 3;
+      }
+      lowestCost = 1;
+    }else { 
       if (robotPosition.posX<2) {
         x_lowest = 1;
         distanceCost[0][1] = -1;
@@ -1020,7 +1057,7 @@ void gripper(int direction) {
 void MeasureFrontSharpCycle(void *pvParameters) {
   for (;;) {
     int ultraMeasure = readUltra2();
-    if (CurrentAction==Straighten && ultraMeasure <=1 && cansCount==0 && stepsDone >= 60 && stepsDone <=180 && puttingBackCans == false &&
+    if (CurrentAction==Straighten && ultraMeasure <=1 && cansCount==0 && stepsDone >= 60 && stepsDone <=230 && puttingBackCans == false &&
       !(robotPosition.posX == 0 && robotPosition.rot == -90) &&
       !(robotPosition.posX == 4 && robotPosition.rot == 90) &&
       !(robotPosition.posY == 0 && robotPosition.rot == 180) &&
