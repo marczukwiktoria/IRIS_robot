@@ -443,8 +443,6 @@ void OpponentDetection(void *pvParameters) {
       opponentAhead=true;
       if (stepsDone>=30 && stepsDone<=180) {
         waitForGoingBack = true;
-        Serial.print("Weszlismy w 1 ");
-        Serial.println(stepsDone);
         CurrentAction = Retreat;
         if (cansCount>=1) {gripper(1);}
         bool canAtBoard = false;
@@ -802,14 +800,6 @@ void calculatePath() {
   int previousGoingTobaseIteration = goingToBase;
   goingToBase = false;
   if (cansCount>=1 || (canOnBoard == false && cansCount == 1)) {
-    Serial.println("POWROT");
-    Serial.print(previousGoingTobaseIteration);
-    Serial.print(";");
-    Serial.print(cantrix[0][1]);
-     Serial.print(";");
-    Serial.print(cantrix[0][3]);
-    Serial.println(";");
-
     if (previousGoingTobaseIteration == true && cantrix[0][1] == 0 && cantrix[0][3] == 0) {
       // Enemy emptied our base can
       if (robotPosition.posX>=2 && robotPosition.rot ==-90 ) {
@@ -975,6 +965,7 @@ void makeDecision(int x, int y) {
       }
     } 
   } else { // HERE IS A LOGIC WHEN OPPONENT IS AHEAD
+    // 0 in xdist and ydist is not possible because of can resetting 
     if (abs(y_dist) < abs(x_dist)) { // Priority for Y movement if distance is bigger or equal
       if (y_dist > 0) { // Up direction movement needed  (Y+)
         if (robotPosition.rot == 180) {
@@ -985,6 +976,12 @@ void makeDecision(int x, int y) {
         }
         else if (robotPosition.rot == -90) {
           CurrentAction = RotateRight; //  Rotation right(-90 -> 0)
+        } else {
+          if (robotPosition.posX <= 2) {
+            CurrentAction = RotateRight;
+          } else {
+            CurrentAction = RotateLeft;
+          }
         }
       }
       else if (y_dist < 0) { // Down direction movement needed  (Y-)
@@ -996,6 +993,12 @@ void makeDecision(int x, int y) {
         }
         else if (robotPosition.rot == -90) {
           CurrentAction = RotateLeft; // Rotation left (-90 -> 180)
+        } else {
+          if (robotPosition.posX <= 2) {
+            CurrentAction = RotateLeft;
+          } else {
+            CurrentAction = RotateRight;
+          }
         }
       }
     } else { // Priority for X axis
@@ -1008,6 +1011,12 @@ void makeDecision(int x, int y) {
         }
         else if (robotPosition.rot == -90) {
           CurrentAction = RotateLeft; // Rotation by 180
+        } else {
+          if (robotPosition.posY >= 2) {
+            CurrentAction = RotateLeft;
+          } else {
+            CurrentAction = RotateRight;
+          }
         }
       }
       else if (x_dist < 0) { // Left direction movement needed  (X-)
@@ -1019,6 +1028,12 @@ void makeDecision(int x, int y) {
         }
         else if (robotPosition.rot == 90) {
           CurrentAction = RotateLeft; // Rotation by 180
+        } else {
+          if (robotPosition.posY >= 2) {
+            CurrentAction = RotateRight;
+          } else {
+            CurrentAction = RotateLeft;
+          }
         }
       }
     } 
@@ -1064,22 +1079,34 @@ void MeasureFrontSharpCycle(void *pvParameters) {
       !(robotPosition.posY == 4 && robotPosition.rot == 0)
     ) {
       int sharpMeasure = readSharp2();
-      int shValueTemp = 0;
-      if (sharpMeasure>=2) {shValueTemp = 1;}
-      if (robotPosition.rot == 0){
-        cantrix[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
-        distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
-        // Serial.print("i wrote somethign");
-      } else if (robotPosition.rot == 180){
-        cantrix[robotPosition.posY-1][robotPosition.posX] = shValueTemp;
-        distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
-      } else if (robotPosition.rot == 90){
-        cantrix[robotPosition.posY][robotPosition.posX+1] = shValueTemp;
-        distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
-      } else if (robotPosition.rot == -90){
-        cantrix[robotPosition.posY][robotPosition.posX-1] = shValueTemp;
-        distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
+      if (sharpMeasure>=2 && robotPosition.rot == 0){
+        cantrix[robotPosition.posY+1][robotPosition.posX] = 1;
+        distanceCost[robotPosition.posY+1][robotPosition.posX] = 1;
+      } else if (sharpMeasure>=2 && robotPosition.rot == 180){
+        cantrix[robotPosition.posY-1][robotPosition.posX] = 1;
+        distanceCost[robotPosition.posY+1][robotPosition.posX] = 1;
+      } else if (sharpMeasure>=2 && robotPosition.rot == 90){
+        cantrix[robotPosition.posY][robotPosition.posX+1] = 1;
+        distanceCost[robotPosition.posY+1][robotPosition.posX] = 1;
+      } else if (sharpMeasure>=2 && robotPosition.rot == -90){
+        cantrix[robotPosition.posY][robotPosition.posX-1] = 1;
+        distanceCost[robotPosition.posY+1][robotPosition.posX] = 1;
       }
+      // int shValueTemp = 0;
+      // if (sharpMeasure>=2) {shValueTemp = 1;}
+      // if (robotPosition.rot == 0){
+      //   cantrix[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
+      //   distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
+      // } else if (robotPosition.rot == 180){
+      //   cantrix[robotPosition.posY-1][robotPosition.posX] = shValueTemp;
+      //   distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
+      // } else if (robotPosition.rot == 90){
+      //   cantrix[robotPosition.posY][robotPosition.posX+1] = shValueTemp;
+      //   distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
+      // } else if (robotPosition.rot == -90){
+      //   cantrix[robotPosition.posY][robotPosition.posX-1] = shValueTemp;
+      //   distanceCost[robotPosition.posY+1][robotPosition.posX] = shValueTemp;
+      // }
     }
     vTaskDelay(100/portTICK_PERIOD_MS);
   }
