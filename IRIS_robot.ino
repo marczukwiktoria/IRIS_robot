@@ -281,7 +281,7 @@ void moveBack(int dist) {
       CurrentAction = Straighten;
       int one = 1;
       xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
-    } else if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false) {
+    } else if ((readSensor(rightLineSensorPins[0]) || readSensor(leftLineSensorPins[0])) && keepLineOn == false && puttingBackCans == false) {
       previousCrossingTimestamp = millis();
       keepLineOn = true;
       stepsDone = 0;
@@ -290,7 +290,7 @@ void moveBack(int dist) {
       xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
     } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=1200 && puttingBackCans == true) {
       keepLineOn = false;
-    } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=400) {
+    } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=400 && puttingBackCans == false) {
       keepLineOn = false;
     }   
   }
@@ -985,6 +985,7 @@ void makeDecision(int x, int y) {
     CurrentAction = RotateLeft;
     return;
   }
+  if (readUltra2()>=2) {opponentAhead=true;}
   if (opponentAhead==false) {
 
     if (y == 0 && (x==1 || x==3) && x_dist !=0 ) { //&& robotPosition.posX!=2 case for god knows what
@@ -1107,6 +1108,12 @@ void makeDecision(int x, int y) {
         }
         else if (robotPosition.rot == 90) {
           CurrentAction = RotateLeft; // Rotation by 180
+        }
+      } else {
+        if (n_coeff == 1) {
+          CurrentAction = RotateLeft;
+        } else {
+          CurrentAction = RotateRight;
         }
       }
     } 
