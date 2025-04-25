@@ -89,6 +89,7 @@ int cansCount = 0; // Cans count in our gripper
 int stepsDone = 0; // Steps count for reversing
 bool gripperMoving = false;
 bool waitForGoingBack = false; 
+bool gripperUp = true;
 
 // Motor action settings
 enum RobotAction {Straighten=0, RotateLeft=-90, RotateRight=90, Retreat =-1};
@@ -619,6 +620,7 @@ void MakeMeasurements(void *pvParameters) {
           Serial.println("we are at can position!");
           cantrix[robotPosition.posY][robotPosition.posX] = 0;
           cansCount+=1;
+          gripperUp = false;
         }
         if (cantrix[robotPosition.posY][robotPosition.posX] == 1 && robotPosition.posY ==0) {
           Serial.println("we are at base position!");
@@ -1194,28 +1196,36 @@ void makeDecision(int x, int y) {
   }
 }
 
+
 // Setting gripper up and down
 void gripper(int direction) {
   gripperMoving = true;
   if (direction == 0){
-    for(int i = 0; i<200; i++){
-      digitalWrite(SERWO_A, HIGH);
-      digitalWrite(SERWO_B, HIGH);
-      delayMicroseconds(750);
-      digitalWrite(SERWO_A, LOW);
-      delayMicroseconds(1400);
-      digitalWrite(SERWO_B, LOW);
-      delayMicroseconds(17850);
+    if (cansCount >= 1 && robotPosition.posY == 0 && ((robotPosition.posX == 3 && robotPosition.rot == 90)  || (robotPosition.posX == 1 && robotPosition.rot == -90)   )){
+      for(int i = 0; i<200; i++){
+        digitalWrite(SERWO_A, HIGH);
+        digitalWrite(SERWO_B, HIGH);
+        delayMicroseconds(750);
+        digitalWrite(SERWO_A, LOW);
+        delayMicroseconds(1400);
+        digitalWrite(SERWO_B, LOW);
+        delayMicroseconds(17850);
+        
+      }
+      gripperUp = true;
     }
+
   } else {
-    for(int i = 0; i<200; i++){
-      digitalWrite(SERWO_A, HIGH);
-      digitalWrite(SERWO_B, HIGH);
-      delayMicroseconds(1300);
-      digitalWrite(SERWO_B, LOW);
-      delayMicroseconds(300);
-      digitalWrite(SERWO_A, LOW);
-      delayMicroseconds(18400);
+    if (gripperUp == false) {
+      for(int i = 0; i<200; i++){
+        digitalWrite(SERWO_A, HIGH);
+        digitalWrite(SERWO_B, HIGH);
+        delayMicroseconds(1300);
+        digitalWrite(SERWO_B, LOW);
+        delayMicroseconds(300);
+        digitalWrite(SERWO_A, LOW);
+        delayMicroseconds(18400);
+      }
     }
   }
   gripperMoving=false;
