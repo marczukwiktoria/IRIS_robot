@@ -290,7 +290,7 @@ void moveBack(int dist) {
       xQueueSend(makeMeasurementsQueue,&one,portMAX_DELAY);
     } else if (!readSensor(rightLineSensorPins[2]) && !readSensor(leftLineSensorPins[2]) && tempTime>=1200 && puttingBackCans == true) {
       keepLineOn = false;
-    } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=400 && puttingBackCans == false) {
+    } else if (!readSensor(rightLineSensorPins[0]) && !readSensor(leftLineSensorPins[0]) && tempTime>=150 && puttingBackCans == false) {
       keepLineOn = false;
     }   
   }
@@ -902,9 +902,9 @@ void calculatePath() {
   Serial.print(";");
   Serial.println(cansCount);
   if (cansCount>=1 || (canOnBoard == false && cansCount == 1)) {
-    if (previousGoingTobaseIteration == true && cantrix[0][1] == 0 && cantrix[0][3] == 0) {
+    if (previousGoingTobaseIteration == true && opponentAhead == true && cantrix[0][1] == 0 && cantrix[0][3] == 0) {
       // Enemy emptied our base can
-      if (robotPosition.posX>=2 && robotPosition.rot ==-90 ) {
+      if (robotPosition.posX>=2) {
         x_lowest = 1;
         distanceCost[0][1] = -1;
         cantrix[0][1] = 1;
@@ -921,7 +921,7 @@ void calculatePath() {
         x_lowest = 3;
       }
       lowestCost = 1;
-    }else { 
+    } else { 
       if (robotPosition.posX<2) {
         x_lowest = 1;
         distanceCost[0][1] = -1;
